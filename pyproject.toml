@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wordwright"
+version = "0.1.0"
+description = "Local, hands-free dictation for Windows"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+authors = [{ name = "Charlie McKenna" }]
+requires-python = ">=3.11"
+dependencies = [
+    # PyAV 19 removed an argument still used by faster-whisper 1.2.1.
+    "av>=11,<19",
+    "faster-whisper>=1.2,<2",
+    "numpy>=1.26,<3",
+    "Pillow>=10,<13",
+    "pynput>=1.7,<2",
+    "pyperclip>=1.9,<2",
+    "pystray>=0.19,<1",
+    "sounddevice>=0.5,<1",
+]
+
+[project.scripts]
+wordwright = "wordwright.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+wordwright = ["assets/*.png"]
+
