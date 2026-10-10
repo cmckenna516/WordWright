@@ -112,6 +112,8 @@ supported product.
   lighter CPU), with a manual override.
 - Typing the transcript at the cursor instead of pasting through the clipboard.
 - `Esc` cancels the current recording without transcription or typing.
+- Shortcut registered with Windows so it fires only on the exact combination,
+  and can be changed in Settings.
 - An idle overlay that redraws only when something changes.
 
 ### Next
@@ -120,7 +122,7 @@ supported product.
 
 ### Later possibilities, not committed
 
-- Editable global hotkey and a microphone picker.
+- Microphone picker.
 - Launch at Windows sign-in.
 - Additional languages.
 

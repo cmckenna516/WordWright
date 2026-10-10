@@ -6,7 +6,8 @@ from .audio import AudioRecorder
 from .config import AppConfig
 from .controller import AppController
 from .hardware import HardwareProfile, ModelPlan, detect_hardware, resolve
-from .hotkeys import GlobalHotkey
+from .hotkeys import create_hotkeys, hotkey_label, parse_hotkey
+from .state import AppState
 from .output import TextInserter
 from .settings import SettingsStore
 from .status import TrayStatus
@@ -68,14 +69,29 @@ def build_app(
         transcriber=transcriber,
         inserter=inserter,
         status=status,
+        hotkey_label=lambda: hotkey_label(settings.snapshot().hotkey),
     )
-    hotkey = GlobalHotkey(
-        {
-            config.hotkey: controller.handle_hotkey,
-            config.cancel_hotkey: controller.cancel_recording,
-        }
+    hotkey = create_hotkeys(
+        settings.snapshot().hotkey,
+        on_toggle=controller.handle_hotkey,
+        on_cancel=controller.cancel_recording,
     )
     controller.attach_hotkey(hotkey)
+
+    def change_hotkey(spec: str) -> str | None:
+        """Apply a new shortcut from Settings. Returns an error message or None."""
+
+        try:
+            new = parse_hotkey(spec)
+        except ValueError as exc:
+            return str(exc)
+        if controller.state in {AppState.RECORDING, AppState.TRANSCRIBING}:
+            return "Finish the current dictation before changing the shortcut."
+        error = hotkey.set_hotkey(new.spec)
+        if error:
+            return error
+        settings.update(hotkey=new.spec)
+        return None
 
     def apply_model_setting() -> None:
         new_plan = resolve(settings.snapshot().model_choice, profile)
@@ -93,6 +109,7 @@ def build_app(
     status.set_quit_callback(controller.shutdown)
     status.set_toggle_callback(controller.handle_hotkey)
     status.set_model_change_callback(apply_model_setting)
+    status.set_hotkey_changer(change_hotkey)
     status.set_model_explainer(
         lambda: _describe_choice(settings.snapshot().model_choice, profile)
     )

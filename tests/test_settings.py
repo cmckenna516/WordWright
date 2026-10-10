@@ -40,6 +40,16 @@ class SettingsStoreTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 store.update(history_enabled=True)
 
+    def test_shortcut_is_validated_and_persisted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            store = SettingsStore(path)
+            self.assertEqual(store.snapshot().hotkey, "ctrl+alt+space")
+            with self.assertRaises(ValueError):
+                store.update(hotkey="space")
+            store.update(hotkey="ctrl+shift+d")
+            self.assertEqual(SettingsStore(path).snapshot().hotkey, "ctrl+shift+d")
+
     def test_rejects_unknown_model(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = SettingsStore(Path(directory) / "settings.json")

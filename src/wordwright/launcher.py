@@ -9,6 +9,7 @@ from typing import Callable
 
 from . import __version__
 from .hardware import MODEL_LABELS
+from .hotkeys import KEY_CHOICES, MODIFIER_CHOICES, hotkey_label, parse_hotkey
 from .settings import SettingsStore, parse_vocabulary
 from .sounds import SoundPlayer
 from .state import AppState
@@ -39,8 +40,10 @@ class LauncherWindow:
         on_settings_changed: Callable[[], None],
         on_model_changed: Callable[[], None] | None = None,
         model_explainer: Callable[[], str] | None = None,
+        hotkey_changer: Callable[[str], str | None] | None = None,
     ) -> None:
         self._root = root
+        self._hotkey_changer = hotkey_changer or (lambda spec: None)
         self._settings = settings
         self._sounds = sounds
         self._on_toggle = on_toggle
@@ -57,8 +60,8 @@ class LauncherWindow:
 
     def _configure_root(self) -> None:
         self._root.title("Wordwright")
-        self._root.geometry("850x560")
-        self._root.minsize(760, 520)
+        self._root.geometry("850x600")
+        self._root.minsize(760, 580)
         self._root.configure(bg=self._BACKGROUND)
         self._root.protocol("WM_DELETE_WINDOW", self.hide)
         self._root.after(0, self._apply_dark_titlebar)
@@ -225,7 +228,7 @@ class LauncherWindow:
             page,
             "Local dictation utility",
             "Ready at your command.",
-            "Press the hotkey, speak naturally, and Wordwright places the finished text where you left your cursor.",
+            "Press your shortcut, speak naturally, and Wordwright types the finished text where you left your cursor.",
         )
         status_panel = tk.Frame(
             page,
@@ -258,7 +261,9 @@ class LauncherWindow:
             font=("Trebuchet MS", 9),
         )
         self._status_label.pack(anchor="w", pady=(3, 0))
-        self._hotkey_keys(status_panel)
+        self._keycaps = tk.Frame(status_panel, bg=self._PANEL)
+        self._keycaps.pack(side="right")
+        self._render_keycaps()
 
         self._record_button = tk.Button(
             page,
@@ -309,13 +314,16 @@ class LauncherWindow:
                 self._model_card = value_label
         return page
 
-    def _hotkey_keys(self, parent: tk.Widget) -> None:
-        for index, key in enumerate(("CTRL", "ALT", "SPACE")):
+    def _render_keycaps(self) -> None:
+        for child in self._keycaps.winfo_children():
+            child.destroy()
+        parts = hotkey_label(self._settings.snapshot().hotkey).split("+")
+        for index, key in enumerate(parts):
             if index:
-                tk.Label(parent, text="+", bg=self._PANEL, fg=self._MUTED, font=("Courier New", 8)).pack(side="left", padx=3)
+                tk.Label(self._keycaps, text="+", bg=self._PANEL, fg=self._MUTED, font=("Courier New", 8)).pack(side="left", padx=3)
             tk.Label(
-                parent,
-                text=key,
+                self._keycaps,
+                text=key.upper(),
                 bg="#292b29",
                 fg="#c9c4b7",
                 padx=6,
@@ -469,7 +477,9 @@ class LauncherWindow:
         self._position_var = tk.StringVar(value=settings.overlay_position)
         body = tk.Frame(page, bg=self._BACKGROUND)
         body.pack(fill="both", expand=True, pady=(18, 0))
-        self._section_label(body, "OVERLAY")
+        self._section_label(body, "SHORTCUT")
+        self._shortcut_row(body)
+        self._section_label(body, "OVERLAY", top=17)
         self._check_row(
             body,
             "Keep the scroll available",
@@ -499,15 +509,90 @@ class LauncherWindow:
         )
         self._sound_row(body, "Start sound", "start_sound_path")
         self._sound_row(body, "Stop sound", "stop_sound_path")
-        self._section_label(body, "PRIVACY", top=17)
-        tk.Label(
-            body,
-            text="Transcripts are typed at your cursor and never saved or sent anywhere.",
+        return page
+
+    @staticmethod
+    def _key_display(key: str) -> str:
+        return key.title() if key == "space" else key.upper()
+
+    def _shortcut_row(self, parent: tk.Widget) -> None:
+        current = parse_hotkey(self._settings.snapshot().hotkey)
+        modifier_options = dict(MODIFIER_CHOICES)
+        current_mods = next(
+            (label for label, mods in modifier_options.items() if mods == current.modifiers),
+            None,
+        )
+        if current_mods is None:
+            current_mods = " + ".join(m.title() for m in current.modifiers)
+            modifier_options[current_mods] = current.modifiers
+        self._modifier_options = modifier_options
+        self._key_options = {self._key_display(key): key for key in KEY_CHOICES}
+        self._modifier_var = tk.StringVar(value=current_mods)
+        self._key_var = tk.StringVar(value=self._key_display(current.key))
+
+        row = tk.Frame(parent, bg=self._BACKGROUND)
+        row.pack(fill="x", pady=4)
+        tk.Label(row, text="Start and stop dictation", bg=self._BACKGROUND, fg=self._TEXT, font=("Trebuchet MS", 9)).pack(side="left")
+        tk.Button(
+            row,
+            text="Apply",
+            command=self._apply_shortcut,
+            bg=self._ACCENT,
+            fg="#1b160b",
+            activebackground="#e2bc66",
+            activeforeground="#1b160b",
+            bd=0,
+            padx=12,
+            pady=4,
+            font=("Trebuchet MS", 8, "bold"),
+        ).pack(side="right", padx=(8, 0))
+        for variable, options, width in (
+            (self._key_var, self._key_options, 6),
+            (self._modifier_var, self._modifier_options, 16),
+        ):
+            menu = tk.OptionMenu(row, variable, *options)
+            menu.configure(
+                width=width,
+                bg=self._PANEL,
+                fg=self._TEXT,
+                activebackground=self._PANEL_ACTIVE,
+                activeforeground=self._TEXT,
+                highlightthickness=0,
+                bd=0,
+                font=("Courier New", 8),
+            )
+            menu["menu"].configure(bg=self._PANEL, fg=self._TEXT, activebackground=self._PANEL_ACTIVE)
+            menu.pack(side="right", padx=(4, 0))
+            if variable is self._key_var:
+                tk.Label(row, text="+", bg=self._BACKGROUND, fg=self._MUTED, font=("Courier New", 8)).pack(side="right", padx=(4, 0))
+        self._shortcut_status = tk.Label(
+            parent,
+            text=self._shortcut_summary(),
             bg=self._BACKGROUND,
             fg=self._MUTED,
+            justify="left",
+            wraplength=540,
             font=("Trebuchet MS", 8),
-        ).pack(anchor="w")
-        return page
+        )
+        self._shortcut_status.pack(anchor="w")
+
+    def _shortcut_summary(self) -> str:
+        return (
+            f"Fires only when {hotkey_label(self._settings.snapshot().hotkey)} is pressed together. "
+            "Esc cancels while recording."
+        )
+
+    def _apply_shortcut(self) -> None:
+        modifiers = self._modifier_options[self._modifier_var.get()]
+        key = self._key_options[self._key_var.get()]
+        spec = "+".join((*modifiers, key))
+        error = self._hotkey_changer(spec)
+        if error:
+            self._shortcut_status.configure(text=error, fg=theme_for(AppState.ERROR).accent)
+            return
+        self._shortcut_status.configure(text=self._shortcut_summary(), fg=self._MUTED)
+        self._render_keycaps()
+        self._on_settings_changed()
 
     def _section_label(self, parent: tk.Widget, text: str, top: int = 0) -> None:
         tk.Label(parent, text=text, bg=self._BACKGROUND, fg=self._ACCENT, font=("Courier New", 7, "bold")).pack(anchor="w", pady=(top, 5))

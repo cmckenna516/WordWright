@@ -31,7 +31,8 @@ Press `Esc` while recording to cancel without typing anything.
 | You want to | Do this |
 | --- | --- |
 | Start or stop dictation | `Ctrl+Alt+Space`, or select the scroll and choose **Start recording** |
-| Cancel a recording | `Esc` |
+| Change the shortcut | **Settings** page → **Shortcut** → pick keys → **Apply** |
+| Cancel a recording | `Esc` (Wordwright only listens for Esc while recording) |
 | Teach it your words | **Speech** page → one word or phrase per line → **Save words** |
 | Change the speech model | **Speech** page → **Model** (Automatic is the default) |
 | Move or hide the overlay | **Settings** page, or the tray icon menu |

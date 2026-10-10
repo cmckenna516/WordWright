@@ -72,9 +72,14 @@ class FakeInserter:
 
 
 class FakeHotkey:
-    def __init__(self) -> None:
+    def __init__(self, registration_error=None) -> None:
         self.started = False
         self.stopped = False
+        self.cancel_states = []
+        self.registration_error = registration_error
+
+    def set_cancel_enabled(self, enabled) -> None:
+        self.cancel_states.append(enabled)
 
     def start(self) -> None:
         self.started = True
@@ -203,6 +208,49 @@ class AppControllerTests(unittest.TestCase):
         self.assertFalse(recorder.cancelled)
         self.assertEqual(controller.state, AppState.IDLE)
         self.assertEqual(status.messages, messages)
+
+    def test_escape_is_claimed_only_while_recording(self) -> None:
+        controller, _, _, _ = self.make_controller()
+        controller.start()
+        hotkey = controller._hotkey
+        hotkey.cancel_states.clear()
+
+        controller.handle_hotkey()
+        self.assertEqual(hotkey.cancel_states, [True])
+        controller.handle_hotkey()
+        self.assertFalse(hotkey.cancel_states[-1])
+
+    def test_ready_message_names_the_configured_shortcut(self) -> None:
+        status = FakeStatus()
+        controller = AppController(
+            config=AppConfig(),
+            recorder=FakeRecorder(),
+            transcriber=FakeTranscriber(),
+            inserter=FakeInserter(),
+            status=status,
+            hotkey=FakeHotkey(),
+            async_runner=ImmediateRunner(),
+            hotkey_label=lambda: "Ctrl+Shift+D",
+        )
+        controller.start()
+        self.assertIn("Press Ctrl+Shift+D", status.messages[-1])
+
+    def test_shortcut_conflict_is_reported_and_app_still_starts(self) -> None:
+        status = FakeStatus()
+        controller = AppController(
+            config=AppConfig(),
+            recorder=FakeRecorder(),
+            transcriber=FakeTranscriber(),
+            inserter=FakeInserter(),
+            status=status,
+            hotkey=FakeHotkey("Ctrl+Alt+Space is already used by another app."),
+            async_runner=ImmediateRunner(),
+        )
+        controller.start()
+
+        self.assertIn("already used", status.messages[0])
+        self.assertEqual(controller.state, AppState.IDLE)
+        self.assertIn("scroll", status.messages[-1])
 
     def test_model_change_while_idle_reloads_immediately(self) -> None:
         controller, _, _, transcriber = self.make_controller()

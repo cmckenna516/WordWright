@@ -27,7 +27,9 @@ class AppController:
         hotkey: Any | None = None,
         async_runner: Callable[[Callable[[], None]], None] | None = None,
         monotonic: Callable[[], float] = time.monotonic,
+        hotkey_label: Callable[[], str] = lambda: "Ctrl+Alt+Space",
     ) -> None:
+        self._hotkey_label = hotkey_label
         self._config = config
         self._recorder = recorder
         self._transcriber = transcriber
@@ -58,6 +60,9 @@ class AppController:
             raise RuntimeError("A global hotkey must be attached before startup.")
         self._set_state(AppState.LOADING)
         self._hotkey.start()
+        problem = getattr(self._hotkey, "registration_error", None)
+        if problem:
+            self._status.notify(f"{problem} You can still start dictation from the scroll.")
         self._run_async(self._load_model)
 
     def handle_hotkey(self) -> None:
@@ -157,7 +162,10 @@ class AppController:
             self._enter_idle()
             return
         self._set_state(AppState.IDLE)
-        self._status.notify("Ready. Press Ctrl+Alt+Space to start recording.")
+        if getattr(self._hotkey, "registration_error", None):
+            self._status.notify("Ready. Select the scroll to start recording.")
+        else:
+            self._status.notify(f"Ready. Press {self._hotkey_label()} to start recording.")
 
     def _start_reload(self, configure: Callable[[], None]) -> None:
         self._set_state(AppState.LOADING)
@@ -265,6 +273,10 @@ class AppController:
     def _set_state(self, state: AppState) -> None:
         with self._state_lock:
             self._state = state
+        set_cancel = getattr(self._hotkey, "set_cancel_enabled", None)
+        if set_cancel is not None:
+            # Esc is claimed from other apps only while a recording is running.
+            set_cancel(state is AppState.RECORDING)
         self._status.update(state)
 
     @staticmethod

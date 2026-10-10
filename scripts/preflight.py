@@ -9,7 +9,7 @@ import pyperclip
 
 from wordwright.audio import AudioRecorder, list_microphones
 from wordwright.hardware import detect_hardware, recommend
-from wordwright.hotkeys import GlobalHotkey
+from wordwright.hotkeys import create_hotkeys
 from wordwright.transcription import LocalTranscriber
 
 
@@ -94,13 +94,15 @@ def verify_clipboard() -> None:
 
 
 def verify_hotkey_hook() -> None:
-    hotkey = GlobalHotkey({"<ctrl>+<alt>+<shift>+<f12>": lambda: None})
-    hotkey.start()
+    # Register and release an unlikely shortcut to prove the hotkey system
+    # works. The user's own shortcut is checked when the app starts.
+    hotkeys = create_hotkeys("ctrl+alt+shift+f12", lambda: None, lambda: None)
+    hotkeys.start()
     try:
-        hotkey.wait_until_ready()
+        hotkeys.wait_until_ready()
     finally:
-        hotkey.stop()
-        hotkey.join(timeout=1.0)
+        hotkeys.stop()
+        hotkeys.join(timeout=1.0)
     print("Global hotkey check passed.")
 
 

@@ -9,6 +9,7 @@ from ctypes import wintypes
 from pathlib import Path
 from typing import Any, Callable
 
+from .hotkeys import hotkey_label
 from .settings import SettingsStore
 from .sounds import SoundPlayer
 from .state import AppState
@@ -54,6 +55,7 @@ class RecordingOverlay:
         on_quit: Callable[[], None] | None = None,
         on_model_changed: Callable[[], None] | None = None,
         model_explainer: Callable[[], str] | None = None,
+        hotkey_changer: Callable[[str], str | None] | None = None,
         canvas_width: int = _WIDTH,
         canvas_height: int = _HEIGHT,
     ) -> None:
@@ -64,6 +66,7 @@ class RecordingOverlay:
         self._on_quit = on_quit or (lambda: None)
         self._on_model_changed = on_model_changed or (lambda: None)
         self._model_explainer = model_explainer or (lambda: "")
+        self._hotkey_changer = hotkey_changer or (lambda spec: None)
         self._canvas_width = canvas_width
         self._canvas_height = canvas_height
         self._updates: queue.Queue[tuple[str, Any]] = queue.Queue()
@@ -115,6 +118,7 @@ class RecordingOverlay:
             on_settings_changed=self.settings_changed,
             on_model_changed=lambda: self._on_model_changed(),
             model_explainer=lambda: self._model_explainer(),
+            hotkey_changer=lambda spec: self._hotkey_changer(spec),
         )
 
         window = tk.Toplevel(root)
@@ -164,7 +168,7 @@ class RecordingOverlay:
             # Everything the drawing depends on. The canvas is redrawn only when
             # this changes, so an idle overlay costs almost nothing.
             phase = (animation_frame // 4) % 2 if animating() else 0
-            return (state, menu_open, expanded(), phase)
+            return (state, menu_open, expanded(), phase, self._settings.snapshot().hotkey)
 
         def apply_visibility() -> None:
             nonlocal visible
@@ -288,7 +292,8 @@ class RecordingOverlay:
                 font=("Courier New", 9, "bold"),
                 anchor="w",
             )
-            hint = "ESC TO CANCEL" if state == AppState.RECORDING.value else "CTRL · ALT · SPACE"
+            shortcut = hotkey_label(self._settings.snapshot().hotkey).upper().replace("+", " · ")
+            hint = "ESC TO CANCEL" if state == AppState.RECORDING.value else shortcut
             canvas.create_text(
                 right - 17,
                 38,

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .hardware import AUTO, MODEL_CHOICES
+from .hotkeys import DEFAULT_HOTKEY, parse_hotkey
 
 MAX_VOCABULARY_TERMS = 200
 MAX_VOCABULARY_TERM_LENGTH = 60
@@ -43,6 +44,7 @@ class UserSettings:
     sounds_enabled: bool = False
     start_sound_path: str | None = None
     stop_sound_path: str | None = None
+    hotkey: str = DEFAULT_HOTKEY
     model_choice: str = AUTO
     vocabulary: tuple[str, ...] = ()
     # Reserved for the planned running transcript archive. Off until the user
@@ -123,6 +125,7 @@ class SettingsStore:
     def _validate(self, settings: UserSettings) -> None:
         if settings.overlay_position not in self._POSITIONS:
             raise ValueError(f"Unsupported overlay position: {settings.overlay_position}")
+        parse_hotkey(settings.hotkey)
         if settings.model_choice not in MODEL_CHOICES:
             raise ValueError(f"Unsupported speech model: {settings.model_choice}")
         if len(settings.vocabulary) > MAX_VOCABULARY_TERMS:

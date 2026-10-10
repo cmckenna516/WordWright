@@ -24,8 +24,6 @@ class AppConfig:
     which picks one that suits this machine.
     """
 
-    hotkey: str = "<ctrl>+<alt>+<space>"
-    cancel_hotkey: str = "<esc>"
     model: str | None = None
     device: str | None = None
     compute_type: str | None = None
