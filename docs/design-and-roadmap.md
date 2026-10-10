@@ -90,7 +90,10 @@ is enabled.
 
 History is strictly opt-in and disabled by default.
 
-- Enabling it requires the user to choose a local folder first.
+- Users add any number of folders (up to 20), local, synced (OneDrive), or
+  external, and pick one destination at a time, or "Don't save". The overlay
+  names the destination while saving so nothing lands in the wrong folder.
+- Removing a folder from Wordwright never deletes its files.
 - Transcript text is never written to disk while it is disabled.
 - Recorded audio is never retained.
 - Each day gets one Markdown file (`YYYY-MM-DD.md`). Each entry's heading
@@ -119,12 +122,12 @@ supported product.
   and can be changed in Settings.
 - An idle overlay that redraws only when something changes.
 
-- Opt-in history in a folder the user chooses, with local stats and a tray
-  toggle.
+- Opt-in history across multiple user-chosen folders, with local stats and a
+  tray destination picker.
 
 ### Next
 
-- Decide from real use whether history needs more than one folder.
+- Learn from real use before adding more.
 
 ### Later possibilities, not committed
 

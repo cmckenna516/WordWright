@@ -5,7 +5,7 @@ import unittest
 from datetime import date, datetime
 from pathlib import Path
 
-from wordwright.archive import TranscriptArchive, collect_stats
+from wordwright.archive import TranscriptArchive, collect_stats, combine_stats
 
 
 def fixed(*moment):
@@ -71,6 +71,19 @@ class StatsTests(unittest.TestCase):
             stats = collect_stats(folder, today=date(2026, 10, 10))
 
         self.assertEqual((stats.all_time.dictations, stats.all_time.words), (1, 87))
+
+    def test_folders_stay_separate_and_stats_combine(self) -> None:
+        with tempfile.TemporaryDirectory() as projects, tempfile.TemporaryDirectory() as meetings:
+            TranscriptArchive(fixed(2026, 10, 10, 9, 0, 0)).save(projects, "project note", 3)
+            TranscriptArchive(fixed(2026, 10, 10, 9, 5, 0)).save(meetings, "meeting note here", 4)
+            project_text = (Path(projects) / "2026-10-10.md").read_text(encoding="utf-8")
+            stats = combine_stats(
+                [collect_stats(folder, today=date(2026, 10, 10)) for folder in (projects, meetings)]
+            )
+
+        self.assertIn("project note", project_text)
+        self.assertNotIn("meeting note", project_text)
+        self.assertEqual((stats.today.dictations, stats.today.words), (2, 5))
 
     def test_missing_folder_gives_empty_stats(self) -> None:
         self.assertEqual(collect_stats("/no/such/folder").all_time.dictations, 0)

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .hotkeys import hotkey_label
-from .settings import SettingsStore
+from .settings import SettingsStore, folder_labels
 from .sounds import SoundPlayer
 from .state import AppState
 from .theme import theme_for
@@ -168,7 +168,8 @@ class RecordingOverlay:
             # Everything the drawing depends on. The canvas is redrawn only when
             # this changes, so an idle overlay costs almost nothing.
             phase = (animation_frame // 4) % 2 if animating() else 0
-            return (state, menu_open, expanded(), phase, self._settings.snapshot().hotkey)
+            current = self._settings.snapshot()
+            return (state, menu_open, expanded(), phase, current.hotkey, current.history_folder)
 
         def apply_visibility() -> None:
             nonlocal visible
@@ -279,7 +280,7 @@ class RecordingOverlay:
             canvas.create_text(
                 83,
                 29,
-                text="WORDWRIGHT",
+                text=self._brand_line(),
                 fill="#9b927f",
                 font=("Courier New", 7),
                 anchor="w",
@@ -430,6 +431,19 @@ class RecordingOverlay:
         root.mainloop()
         if mouse_listener is not None:
             mouse_listener.stop()
+
+    def _brand_line(self) -> str:
+        """Top line of the scroll; names the history folder when saving, so a
+        dictation never lands in the wrong place unnoticed."""
+
+        current = self._settings.snapshot()
+        if not current.history_folder:
+            return "WORDWRIGHT"
+        name = folder_labels(current.history_folders).get(current.history_folder, "")
+        # Keep clear of the shortcut hint on the right side of the scroll.
+        if len(name) > 14:
+            name = name[:13] + "…"
+        return f"WORDWRIGHT · SAVING TO {name.upper()}"
 
     @staticmethod
     def _display_for_state(state: str) -> tuple[str, str, str, str]:

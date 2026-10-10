@@ -88,6 +88,18 @@ class HistoryStats:
     days: int = 0
 
 
+def combine_stats(parts: list[HistoryStats]) -> HistoryStats:
+    combined = HistoryStats()
+    for part in parts:
+        for key in ("today", "week", "all_time"):
+            source, target = getattr(part, key), getattr(combined, key)
+            target.dictations += source.dictations
+            target.words += source.words
+            target.seconds += source.seconds
+        combined.days += part.days
+    return combined
+
+
 def collect_stats(folder: Path | str, today: date | None = None) -> HistoryStats:
     """Summarize every day file in the folder. Unrecognized lines are ignored,
     so users can edit or annotate the files without breaking anything."""

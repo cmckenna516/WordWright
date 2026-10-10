@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 from pathlib import Path
+
+from wordwright.settings import SettingsStore
 
 from wordwright.overlay import RecordingOverlay
 
@@ -31,6 +34,18 @@ class RecordingOverlayTests(unittest.TestCase):
         pasted = RecordingOverlay._display_for_state("Text typed")[3]
 
         self.assertEqual(len({recording, transcribing, pasted}), 3)
+
+    def test_scroll_names_the_folder_being_saved_to(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            settings = SettingsStore(Path(directory) / "settings.json")
+            overlay = RecordingOverlay(Path("unused.png"), settings=settings)
+            self.assertEqual(overlay._brand_line(), "WORDWRIGHT")
+
+            settings.add_history_folder(Path(directory) / "Meetings")
+            self.assertEqual(overlay._brand_line(), "WORDWRIGHT · SAVING TO MEETINGS")
+
+            settings.add_history_folder(Path(directory) / "Quarterly planning notes")
+            self.assertEqual(overlay._brand_line(), "WORDWRIGHT · SAVING TO QUARTERLY PLA…")
 
     def test_unknown_state_falls_back_to_ready(self) -> None:
         self.assertEqual(RecordingOverlay._display_for_state("Paste sent")[0], "READY")
