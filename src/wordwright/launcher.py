@@ -7,8 +7,12 @@ from pathlib import Path
 from tkinter import filedialog
 from typing import Callable
 
-from .settings import SettingsStore
+from . import __version__
+from .hardware import MODEL_LABELS
+from .settings import SettingsStore, parse_vocabulary
 from .sounds import SoundPlayer
+from .state import AppState
+from .theme import theme_for
 
 
 class LauncherWindow:
@@ -24,24 +28,6 @@ class LauncherWindow:
     _BODY = "#c3c0b6"
     _MUTED = "#87887f"
     _ACCENT = "#d6a84b"
-    _STATE_COLORS = {
-        "Loading model": "#d6a84b",
-        "Idle": "#87a975",
-        "Recording": "#f08b7e",
-        "Transcribing": "#78b8e9",
-        "Paste sent": "#79c78b",
-        "Copied to clipboard": "#e1b75e",
-        "Error": "#d98bd9",
-    }
-    _STATE_COPY = {
-        "Loading model": "Preparing the local scribe…",
-        "Idle": "Ready to write",
-        "Recording": "Recording",
-        "Transcribing": "Setting your words in type…",
-        "Paste sent": "Paste command sent",
-        "Copied to clipboard": "No text field found — copied to clipboard",
-        "Error": "Something needs attention",
-    }
 
     def __init__(
         self,
@@ -51,6 +37,8 @@ class LauncherWindow:
         on_toggle: Callable[[], None],
         on_quit: Callable[[], None],
         on_settings_changed: Callable[[], None],
+        on_model_changed: Callable[[], None] | None = None,
+        model_explainer: Callable[[], str] | None = None,
     ) -> None:
         self._root = root
         self._settings = settings
@@ -58,7 +46,9 @@ class LauncherWindow:
         self._on_toggle = on_toggle
         self._on_quit = on_quit
         self._on_settings_changed = on_settings_changed
-        self._state = "Loading model"
+        self._on_model_changed = on_model_changed or (lambda: None)
+        self._model_explainer = model_explainer or (lambda: "")
+        self._state = AppState.LOADING.value
         self._pages: dict[str, tk.Frame] = {}
         self._nav_buttons: dict[str, tk.Button] = {}
         self._configure_root()
@@ -114,9 +104,9 @@ class LauncherWindow:
 
         for key, label, glyph in (
             ("dictate", "Dictate", "●"),
+            ("speech", "Speech", "✎"),
             ("settings", "Settings", "⚙"),
             ("history", "History", "▤"),
-            ("stats", "Stats", "▥"),
         ):
             button = tk.Button(
                 sidebar,
@@ -157,20 +147,14 @@ class LauncherWindow:
         content.grid_rowconfigure(0, weight=1)
         content.grid_columnconfigure(0, weight=1)
         self._pages["dictate"] = self._build_dictate(content)
+        self._pages["speech"] = self._build_speech(content)
         self._pages["settings"] = self._build_settings(content)
         self._pages["history"] = self._build_future_page(
             content,
             "Optional local archive",
             "History is off.",
             "Nothing is saved unless you explicitly choose a local folder and enable history.",
-            "Local search, corrections, retention controls, mind maps, and exports will live here.",
-        )
-        self._pages["stats"] = self._build_future_page(
-            content,
-            "Private local insights",
-            "Stats are coming later.",
-            "Usage summaries will remain on this machine and can be disabled.",
-            "Words dictated, time saved, vocabulary, and exportable trends will live here.",
+            "A running archive file of your dictations, kept in a folder you choose.",
         )
         for page in self._pages.values():
             page.grid(row=0, column=0, sticky="nsew")
@@ -180,7 +164,7 @@ class LauncherWindow:
         footer.pack_propagate(False)
         tk.Label(
             footer,
-            text="WORDWRIGHT 0.1",
+            text=f"WORDWRIGHT {__version__}",
             bg="#111313",
             fg="#71736d",
             font=("Courier New", 8),
@@ -255,7 +239,7 @@ class LauncherWindow:
         self._status_orb = tk.Canvas(status_panel, width=18, height=18, bg=self._PANEL, highlightthickness=0)
         self._status_orb.pack(side="left", padx=(0, 9))
         self._orb_id = self._status_orb.create_oval(
-            4, 4, 14, 14, fill=self._STATE_COLORS["Loading model"], outline=""
+            4, 4, 14, 14, fill=theme_for(AppState.LOADING).accent, outline=""
         )
         state_copy = tk.Frame(status_panel, bg=self._PANEL)
         state_copy.pack(side="left", fill="x", expand=True)
@@ -268,9 +252,9 @@ class LauncherWindow:
         ).pack(anchor="w")
         self._status_label = tk.Label(
             state_copy,
-            text=self._STATE_COPY["Loading model"],
+            text=theme_for(AppState.LOADING).launcher_copy,
             bg=self._PANEL,
-            fg=self._STATE_COLORS["Loading model"],
+            fg=theme_for(AppState.LOADING).accent,
             font=("Trebuchet MS", 9),
         )
         self._status_label.pack(anchor="w", pady=(3, 0))
@@ -297,7 +281,7 @@ class LauncherWindow:
         details.pack(fill="x", side="bottom")
         for index, (label, value) in enumerate(
             (
-                ("SCRIBE", "small.en · local"),
+                ("SCRIBE", "Choosing a model…"),
                 ("PRIVACY", "History is off"),
                 ("OVERLAY", "Closed scroll while idle"),
             )
@@ -321,6 +305,8 @@ class LauncherWindow:
             value_label.pack(anchor="w", pady=(5, 0))
             if label == "PRIVACY":
                 self._history_card = value_label
+            elif label == "SCRIBE":
+                self._model_card = value_label
         return page
 
     def _hotkey_keys(self, parent: tk.Widget) -> None:
@@ -376,6 +362,104 @@ class LauncherWindow:
         ).pack(anchor="w", pady=(9, 0))
         return page
 
+    def _build_speech(self, parent: tk.Widget) -> tk.Frame:
+        page = self._page(parent)
+        self._heading(
+            page,
+            "Speech recognition",
+            "Words Wordwright should know",
+            "Names, products, and jargon the model tends to misspell. One per line. "
+            "Changes apply to your next dictation.",
+        )
+        body = tk.Frame(page, bg=self._BACKGROUND)
+        body.pack(fill="both", expand=True, pady=(16, 0))
+        self._vocabulary_text = tk.Text(
+            body,
+            height=7,
+            wrap="word",
+            bg=self._PANEL,
+            fg=self._TEXT,
+            insertbackground=self._ACCENT,
+            selectbackground=self._PANEL_ACTIVE,
+            highlightbackground=self._BORDER,
+            highlightcolor=self._ACCENT,
+            highlightthickness=1,
+            bd=0,
+            padx=10,
+            pady=8,
+            font=("Trebuchet MS", 9),
+        )
+        self._vocabulary_text.pack(fill="x")
+        self._vocabulary_text.insert("1.0", "\n".join(self._settings.snapshot().vocabulary))
+
+        actions = tk.Frame(body, bg=self._BACKGROUND)
+        actions.pack(fill="x", pady=(8, 0))
+        tk.Button(
+            actions,
+            text="Save words",
+            command=self._save_vocabulary,
+            bg=self._ACCENT,
+            fg="#1b160b",
+            activebackground="#e2bc66",
+            activeforeground="#1b160b",
+            bd=0,
+            padx=12,
+            pady=5,
+            font=("Trebuchet MS", 8, "bold"),
+        ).pack(side="left")
+        self._vocabulary_status = tk.Label(
+            actions,
+            text=self._vocabulary_summary(len(self._settings.snapshot().vocabulary)),
+            bg=self._BACKGROUND,
+            fg=self._MUTED,
+            font=("Trebuchet MS", 8),
+        )
+        self._vocabulary_status.pack(side="left", padx=(10, 0))
+
+        self._section_label(body, "SPEECH MODEL", top=20)
+        self._model_var = tk.StringVar(value=self._settings.snapshot().model_choice)
+        self._option_row(
+            body,
+            "Model",
+            self._model_var,
+            {label: key for key, label in MODEL_LABELS.items()},
+            self._save_model_choice,
+            width=34,
+        )
+        self._model_note = tk.Label(
+            body,
+            text=self._model_explainer(),
+            bg=self._BACKGROUND,
+            fg=self._MUTED,
+            justify="left",
+            wraplength=540,
+            font=("Trebuchet MS", 8),
+        )
+        self._model_note.pack(anchor="w", pady=(4, 0))
+        return page
+
+    @staticmethod
+    def _vocabulary_summary(count: int) -> str:
+        if count == 0:
+            return "No custom words yet."
+        return f"{count} word{'s' if count != 1 else ''} saved. Keep the list short; only the first ~220 tokens are used."
+
+    def _save_vocabulary(self) -> None:
+        terms = parse_vocabulary(self._vocabulary_text.get("1.0", "end"))
+        try:
+            self._settings.update(vocabulary=terms)
+        except ValueError as exc:
+            self._vocabulary_status.configure(text=str(exc), fg=theme_for(AppState.ERROR).accent)
+            return
+        self._vocabulary_text.delete("1.0", "end")
+        self._vocabulary_text.insert("1.0", "\n".join(terms))
+        self._vocabulary_status.configure(text=self._vocabulary_summary(len(terms)), fg=self._MUTED)
+
+    def _save_model_choice(self) -> None:
+        self._settings.update(model_choice=self._model_var.get())
+        self._model_note.configure(text=self._model_explainer())
+        self._on_model_changed()
+
     def _build_settings(self, parent: tk.Widget) -> tk.Frame:
         page = self._page(parent)
         self._heading(page, "Preferences", "Settings", "Keep the utility quiet, local, and easy to understand.")
@@ -418,7 +502,7 @@ class LauncherWindow:
         self._section_label(body, "PRIVACY", top=17)
         tk.Label(
             body,
-            text="Transcript history, correction learning, and mind maps are off by default.",
+            text="Transcripts are typed at your cursor and never saved or sent anywhere.",
             bg=self._BACKGROUND,
             fg=self._MUTED,
             font=("Trebuchet MS", 8),
@@ -470,6 +554,7 @@ class LauncherWindow:
         variable: tk.StringVar,
         options: dict[str, str],
         command: Callable[[], None],
+        width: int = 14,
     ) -> None:
         row = tk.Frame(parent, bg=self._BACKGROUND)
         row.pack(fill="x", pady=5)
@@ -483,7 +568,7 @@ class LauncherWindow:
 
         menu = tk.OptionMenu(row, display, *options, command=choose)
         menu.configure(
-            width=14,
+            width=width,
             bg=self._PANEL,
             fg=self._TEXT,
             activebackground=self._PANEL_ACTIVE,
@@ -557,17 +642,21 @@ class LauncherWindow:
                 fg=self._TEXT if active else self._MUTED,
             )
 
+    def set_model_label(self, label: str) -> None:
+        self._model_card.configure(text=f"{label} · local")
+        self._model_note.configure(text=self._model_explainer())
+
     def update_state(self, state: str) -> None:
         self._state = state
-        color = self._STATE_COLORS.get(state, self._MUTED)
-        self._status_label.configure(text=self._STATE_COPY.get(state, state), fg=color)
-        self._status_orb.itemconfigure(self._orb_id, fill=color)
-        if state == "Recording":
+        theme = theme_for(state)
+        self._status_label.configure(text=theme.launcher_copy, fg=theme.accent)
+        self._status_orb.itemconfigure(self._orb_id, fill=theme.accent)
+        if state == AppState.RECORDING.value:
             self._record_button.configure(text="■  Stop and transcribe", bg="#9e3c35", fg="#fff4ea", state="normal")
-        elif state == "Idle":
+        elif state == AppState.IDLE.value:
             self._record_button.configure(text="●  Start dictation", bg=self._ACCENT, fg="#1b160b", state="normal")
         else:
-            label = "Transcribing…" if state == "Transcribing" else "Please wait"
+            label = "Transcribing…" if state == AppState.TRANSCRIBING.value else "Please wait"
             self._record_button.configure(text=label, bg="#313534", fg="#88887f", state="disabled")
         self._history_card.configure(
             text="History is on" if self._settings.snapshot().history_enabled else "History is off"

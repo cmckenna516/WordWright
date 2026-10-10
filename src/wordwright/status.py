@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-from enum import Enum
 from pathlib import Path
 from typing import Callable, Any
 
@@ -10,27 +9,10 @@ from PIL import Image, ImageDraw
 from .overlay import RecordingOverlay
 from .settings import SettingsStore
 from .sounds import SoundPlayer
+from .state import AppState
+from .theme import theme_for
 
-
-class AppState(str, Enum):
-    LOADING = "Loading model"
-    IDLE = "Idle"
-    RECORDING = "Recording"
-    TRANSCRIBING = "Transcribing"
-    SUCCESS = "Paste sent"
-    CLIPBOARD = "Copied to clipboard"
-    ERROR = "Error"
-
-
-STATE_COLORS: dict[AppState, tuple[int, int, int]] = {
-    AppState.LOADING: (230, 165, 30),
-    AppState.IDLE: (110, 118, 129),
-    AppState.RECORDING: (220, 45, 55),
-    AppState.TRANSCRIBING: (35, 125, 225),
-    AppState.SUCCESS: (35, 165, 90),
-    AppState.CLIPBOARD: (201, 153, 65),
-    AppState.ERROR: (180, 35, 190),
-}
+__all__ = ["AppState", "TrayStatus", "make_status_icon"]
 
 
 def logo_path() -> Path:
@@ -60,7 +42,7 @@ def make_status_icon(
         badge_size = max(16, size // 3)
         draw.ellipse(
             (size - badge_size, size - badge_size, size - 2, size - 2),
-            fill=STATE_COLORS[state] + (255,),
+            fill=theme_for(state).tray_rgb + (255,),
             outline=(245, 245, 245, 255),
             width=2,
         )
@@ -68,7 +50,7 @@ def make_status_icon(
         margin = max(3, size // 12)
         draw.ellipse(
             (margin, margin, size - margin, size - margin),
-            fill=STATE_COLORS[state] + (255,),
+            fill=theme_for(state).tray_rgb + (255,),
             outline=(245, 245, 245, 255),
             width=max(2, size // 16),
         )
@@ -89,6 +71,8 @@ class TrayStatus:
         self._stop_event = threading.Event()
         self._quit_callback: Callable[[], None] | None = None
         self._toggle_callback: Callable[[], None] | None = None
+        self._model_change_callback: Callable[[], None] | None = None
+        self._model_explainer: Callable[[], str] = lambda: ""
         self._logo = load_logo()
         self._overlay = (
             RecordingOverlay(
@@ -97,6 +81,8 @@ class TrayStatus:
                 sounds=self._sounds,
                 on_toggle=self._toggle,
                 on_quit=self._request_quit,
+                on_model_changed=self._model_changed,
+                model_explainer=lambda: self._model_explainer(),
             )
             if self._logo is not None
             else None
@@ -125,6 +111,16 @@ class TrayStatus:
     def set_toggle_callback(self, callback: Callable[[], None]) -> None:
         self._toggle_callback = callback
 
+    def set_model_change_callback(self, callback: Callable[[], None]) -> None:
+        self._model_change_callback = callback
+
+    def set_model_explainer(self, explainer: Callable[[], str]) -> None:
+        self._model_explainer = explainer
+
+    def set_model_label(self, label: str) -> None:
+        if self._overlay is not None:
+            self._overlay.set_model_label(label)
+
     def update(self, state: AppState) -> None:
         with self._lock:
             previous = self._state
@@ -133,7 +129,7 @@ class TrayStatus:
             self._icon.title = self._title(state)
         if state is AppState.RECORDING and previous is not AppState.RECORDING:
             self._sounds.play_start()
-        elif state is AppState.TRANSCRIBING and previous is AppState.RECORDING:
+        elif previous is AppState.RECORDING and state is not AppState.RECORDING:
             self._sounds.play_stop()
         if self._overlay is not None:
             self._overlay.update(state)
@@ -179,6 +175,10 @@ class TrayStatus:
     def _toggle(self) -> None:
         if self._toggle_callback:
             self._toggle_callback()
+
+    def _model_changed(self) -> None:
+        if self._model_change_callback:
+            self._model_change_callback()
 
     def _open(self, icon: Any, item: Any) -> None:
         del icon, item

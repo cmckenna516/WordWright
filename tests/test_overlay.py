@@ -17,8 +17,8 @@ class RecordingOverlayTests(unittest.TestCase):
             "TRANSCRIBING",
         )
         self.assertEqual(
-            RecordingOverlay._display_for_state("Paste sent")[0],
-            "PASTE SENT",
+            RecordingOverlay._display_for_state("Text typed")[0],
+            "TEXT TYPED",
         )
         self.assertEqual(
             RecordingOverlay._display_for_state("Copied to clipboard")[0],
@@ -28,9 +28,12 @@ class RecordingOverlayTests(unittest.TestCase):
     def test_status_colors_are_distinct(self) -> None:
         recording = RecordingOverlay._display_for_state("Recording")[3]
         transcribing = RecordingOverlay._display_for_state("Transcribing")[3]
-        pasted = RecordingOverlay._display_for_state("Paste sent")[3]
+        pasted = RecordingOverlay._display_for_state("Text typed")[3]
 
         self.assertEqual(len({recording, transcribing, pasted}), 3)
+
+    def test_unknown_state_falls_back_to_ready(self) -> None:
+        self.assertEqual(RecordingOverlay._display_for_state("Paste sent")[0], "READY")
 
     def test_scroll_menu_requires_an_explicit_action(self) -> None:
         self.assertIsNone(RecordingOverlay._menu_action_at(228, 10))

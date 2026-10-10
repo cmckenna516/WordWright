@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
+
+from .hardware import AUTO, MODEL_CHOICES
+
+MAX_VOCABULARY_TERMS = 200
+MAX_VOCABULARY_TERM_LENGTH = 60
 
 
 def default_settings_path() -> Path:
@@ -13,6 +19,19 @@ def default_settings_path() -> Path:
     if local_app_data:
         return Path(local_app_data) / "Wordwright" / "settings.json"
     return Path.home() / ".wordwright" / "settings.json"
+
+
+def parse_vocabulary(text: str) -> tuple[str, ...]:
+    """Split user-entered vocabulary on new lines or commas, de-duplicated."""
+
+    terms: list[str] = []
+    seen: set[str] = set()
+    for raw in re.split(r"[\n,]", text):
+        term = " ".join(raw.split())
+        if term and term.casefold() not in seen:
+            seen.add(term.casefold())
+            terms.append(term)
+    return tuple(terms)
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,19 +43,18 @@ class UserSettings:
     sounds_enabled: bool = False
     start_sound_path: str | None = None
     stop_sound_path: str | None = None
-    launch_at_sign_in: bool = False
+    model_choice: str = AUTO
+    vocabulary: tuple[str, ...] = ()
+    # Reserved for the planned running transcript archive. Off until the user
+    # chooses a folder; nothing is written to disk while this is off.
     history_enabled: bool = False
     history_folder: str | None = None
-    history_retention_days: int | None = 30
-    correction_learning_enabled: bool = False
-    mind_map_enabled: bool = False
 
 
 class SettingsStore:
     """Thread-safe JSON settings store with privacy-safe defaults."""
 
     _POSITIONS = {"top_center", "bottom_center", "left_center", "right_center"}
-    _RETENTION_DAYS = {30, 60, 90, None}
 
     def __init__(self, path: Path | None = None) -> None:
         self._path = path or default_settings_path()
@@ -52,6 +70,8 @@ class SettingsStore:
             return replace(self._settings)
 
     def update(self, **changes: Any) -> UserSettings:
+        if "vocabulary" in changes:
+            changes["vocabulary"] = tuple(changes["vocabulary"])
         with self._lock:
             candidate = replace(self._settings, **changes)
             self._validate(candidate)
@@ -64,16 +84,32 @@ class SettingsStore:
             return UserSettings()
         try:
             raw = json.loads(self._path.read_text(encoding="utf-8"))
-            known = {
-                key: value
-                for key, value in raw.items()
-                if key in UserSettings.__dataclass_fields__
-            }
+        except (OSError, ValueError, json.JSONDecodeError):
+            return UserSettings()
+        if not isinstance(raw, dict):
+            return UserSettings()
+        known = {
+            key: tuple(value) if key == "vocabulary" and isinstance(value, list) else value
+            for key, value in raw.items()
+            if key in UserSettings.__dataclass_fields__
+        }
+        try:
             settings = UserSettings(**known)
             self._validate(settings)
             return settings
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
-            return UserSettings()
+        except (TypeError, ValueError):
+            pass
+        # Fall back to field by field so one bad value never wipes out the
+        # rest of the user's preferences.
+        settings = UserSettings()
+        for key, value in known.items():
+            try:
+                candidate = replace(settings, **{key: value})
+                self._validate(candidate)
+            except (TypeError, ValueError):
+                continue
+            settings = candidate
+        return settings
 
     def _save(self, settings: UserSettings) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -87,12 +123,16 @@ class SettingsStore:
     def _validate(self, settings: UserSettings) -> None:
         if settings.overlay_position not in self._POSITIONS:
             raise ValueError(f"Unsupported overlay position: {settings.overlay_position}")
-        if settings.history_retention_days not in self._RETENTION_DAYS:
-            raise ValueError("History retention must be 30, 60, 90 days, or never.")
+        if settings.model_choice not in MODEL_CHOICES:
+            raise ValueError(f"Unsupported speech model: {settings.model_choice}")
+        if len(settings.vocabulary) > MAX_VOCABULARY_TERMS:
+            raise ValueError(f"Vocabulary is limited to {MAX_VOCABULARY_TERMS} terms.")
+        for term in settings.vocabulary:
+            if not isinstance(term, str) or not term.strip():
+                raise ValueError("Vocabulary terms must be non-empty text.")
+            if len(term) > MAX_VOCABULARY_TERM_LENGTH:
+                raise ValueError(
+                    f"Vocabulary terms are limited to {MAX_VOCABULARY_TERM_LENGTH} characters."
+                )
         if settings.history_enabled and not settings.history_folder:
             raise ValueError("A local folder is required before history can be enabled.")
-        if settings.correction_learning_enabled and not settings.history_enabled:
-            raise ValueError("Correction learning requires local history to be enabled.")
-        if settings.mind_map_enabled and not settings.history_enabled:
-            raise ValueError("Mind maps require local history to be enabled.")
-

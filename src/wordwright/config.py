@@ -17,16 +17,21 @@ def default_model_directory() -> Path:
 
 @dataclass(frozen=True, slots=True)
 class AppConfig:
-    """Runtime settings for the first Wordwright prototype."""
+    """Runtime settings for Wordwright.
+
+    ``model``, ``device``, and ``compute_type`` are command-line overrides. When
+    ``model`` is None, the model comes from Settings (Automatic by default),
+    which picks one that suits this machine.
+    """
 
     hotkey: str = "<ctrl>+<alt>+<space>"
-    model: str = "small.en"
-    device: str = "cpu"
-    compute_type: str = "int8"
+    cancel_hotkey: str = "<esc>"
+    model: str | None = None
+    device: str | None = None
+    compute_type: str | None = None
     sample_rate: int = 16_000
     microphone: int | str | None = None
     minimum_recording_seconds: float = 0.25
-    paste_delay_seconds: float = 0.15
+    typing_delay_seconds: float = 0.15
     hotkey_debounce_seconds: float = 0.5
     model_directory: Path = field(default_factory=default_model_directory)
-

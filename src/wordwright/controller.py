@@ -9,13 +9,13 @@ import numpy as np
 
 from .config import AppConfig
 from .output import DeliveryResult
-from .status import AppState
+from .state import AppState
 
 LOGGER = logging.getLogger(__name__)
 
 
 class AppController:
-    """Coordinate hotkey, microphone, transcription, paste, and status."""
+    """Coordinate hotkey, microphone, transcription, typing, and status."""
 
     def __init__(
         self,
@@ -40,6 +40,10 @@ class AppController:
         self._state_lock = threading.RLock()
         self._last_hotkey_at = float("-inf")
         self._shutting_down = False
+        # Serializes start, stop, and cancel, which can arrive from the hotkey
+        # listener and the overlay's click handler at the same time.
+        self._transition_lock = threading.Lock()
+        self._pending_reload: Callable[[], None] | None = None
 
     @property
     def state(self) -> AppState:
@@ -62,16 +66,55 @@ class AppController:
             if now - self._last_hotkey_at < self._config.hotkey_debounce_seconds:
                 return
             self._last_hotkey_at = now
-            state = self._state
 
-        if state is AppState.IDLE:
-            self._begin_recording()
-        elif state is AppState.RECORDING:
-            self._end_recording()
-        elif state is AppState.LOADING:
-            self._status.notify("The local speech model is still loading.")
-        elif state is AppState.TRANSCRIBING:
-            self._status.notify("Transcription is already in progress.")
+        with self._transition_lock:
+            state = self.state
+            if state is AppState.IDLE:
+                self._begin_recording()
+            elif state is AppState.RECORDING:
+                self._end_recording()
+            elif state is AppState.LOADING:
+                self._status.notify("The local speech model is still loading.")
+            elif state is AppState.TRANSCRIBING:
+                self._status.notify("Transcription is already in progress.")
+            elif state is AppState.ERROR and not self._transcriber.is_loaded:
+                self._status.notify(
+                    "The speech model is not loaded. Choose another model under Speech in the app."
+                )
+
+    def cancel_recording(self) -> None:
+        """Discard the current recording without transcribing or typing it."""
+
+        with self._transition_lock:
+            if self.state is not AppState.RECORDING:
+                return
+            try:
+                self._recorder.cancel()
+            finally:
+                LOGGER.info("Recording cancelled")
+                self._enter_idle()
+                self._status.notify("Recording cancelled. Nothing was typed.")
+
+    def reload_model(self, configure: Callable[[], None]) -> None:
+        """Switch speech models now if idle, otherwise once the app is idle again.
+
+        ``configure`` selects the new model on the transcriber; it runs on a
+        worker thread right before the new model loads.
+        """
+
+        with self._state_lock:
+            if self._shutting_down:
+                return
+            busy = self._state in {
+                AppState.LOADING,
+                AppState.RECORDING,
+                AppState.TRANSCRIBING,
+            }
+            if busy:
+                self._pending_reload = configure
+                return
+            self._pending_reload = None
+        self._start_reload(configure)
 
     def shutdown(self) -> None:
         with self._state_lock:
@@ -96,12 +139,50 @@ class AppController:
                 exc,
                 recover=False,
             )
+            with self._state_lock:
+                retry = self._pending_reload is not None
+            if retry:
+                self._enter_idle()
             return
 
-        if not self._shutting_down:
-            LOGGER.info("The local speech model is ready")
+        if self._shutting_down:
+            return
+        LOGGER.info("The local speech model is ready")
+        set_label = getattr(self._status, "set_model_label", None)
+        if set_label is not None:
+            set_label(getattr(self._transcriber, "active_label", ""))
+        with self._state_lock:
+            pending = self._pending_reload
+        if pending is not None:
+            self._enter_idle()
+            return
+        self._set_state(AppState.IDLE)
+        self._status.notify("Ready. Press Ctrl+Alt+Space to start recording.")
+
+    def _start_reload(self, configure: Callable[[], None]) -> None:
+        self._set_state(AppState.LOADING)
+
+        def run() -> None:
+            try:
+                configure()
+            except Exception as exc:
+                LOGGER.exception("Unable to select the speech model")
+                self._fail("The speech model setting could not be applied.", exc, recover=False)
+                return
+            self._load_model()
+
+        self._run_async(run)
+
+    def _enter_idle(self) -> None:
+        with self._state_lock:
+            pending = self._pending_reload
+            self._pending_reload = None
+            if self._shutting_down:
+                return
+        if pending is not None:
+            self._start_reload(pending)
+        else:
             self._set_state(AppState.IDLE)
-            self._status.notify("Ready. Press Ctrl+Alt+Space to start recording.")
 
     def _begin_recording(self) -> None:
         try:
@@ -128,9 +209,9 @@ class AppController:
             return
 
         self._set_state(AppState.TRANSCRIBING)
-        self._run_async(lambda: self._transcribe_and_paste(samples))
+        self._run_async(lambda: self._transcribe_and_type(samples))
 
-    def _transcribe_and_paste(self, samples: np.ndarray) -> None:
+    def _transcribe_and_type(self, samples: np.ndarray) -> None:
         try:
             text = self._transcriber.transcribe(samples)
             if not text:
@@ -141,9 +222,9 @@ class AppController:
                     return
             delivery = self._inserter.deliver(text)
         except Exception as exc:
-            LOGGER.exception("Unable to transcribe or paste")
+            LOGGER.exception("Unable to transcribe or type")
             self._fail(
-                "Transcription failed. If text reached the clipboard, paste it manually.",
+                "Transcription or typing failed. Check the log for details.",
                 exc,
             )
             return
@@ -151,14 +232,12 @@ class AppController:
         if delivery is DeliveryResult.CLIPBOARD:
             self._set_state(AppState.CLIPBOARD)
             self._status.notify(
-                "No active text field was found. The transcript was copied to the clipboard."
+                "No text field could take the transcript, so it was copied to the clipboard."
             )
+            self._return_to_idle_after(1.5, AppState.CLIPBOARD)
         else:
             self._set_state(AppState.SUCCESS)
-            self._status.notify(
-                "Paste command sent. The transcript remains on the clipboard as a backup."
-            )
-        self._return_to_idle_after(1.5)
+            self._return_to_idle_after(1.5, AppState.SUCCESS)
 
     def _fail(
         self,
@@ -171,13 +250,15 @@ class AppController:
         self._set_state(AppState.ERROR)
         self._status.notify(message)
         if recover:
-            self._return_to_idle_after(2.5)
+            self._return_to_idle_after(2.5, AppState.ERROR)
 
-    def _return_to_idle_after(self, seconds: float) -> None:
+    def _return_to_idle_after(self, seconds: float, expected: AppState) -> None:
         def reset() -> None:
             time.sleep(seconds)
-            if not self._shutting_down:
-                self._set_state(AppState.IDLE)
+            # Only reset if nothing else (such as a model reload) has changed
+            # the state since this timer was scheduled.
+            if self.state is expected:
+                self._enter_idle()
 
         self._run_async(reset)
 
