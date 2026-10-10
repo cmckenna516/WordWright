@@ -7,7 +7,10 @@ entirely on your PC.
 <!-- TODO: add docs/media/demo.gif here: one 10-second dictation into a text box. -->
 
 - **Private.** Audio stays in memory and is discarded. Transcripts are never
-  logged, saved, or sent anywhere.
+  logged or sent anywhere, and are saved only if you turn on history.
+- **Optional history.** Keep a record in a folder you choose, one Markdown file
+  per day, with simple stats on the History page. Switch it on or off any time
+  from the tray icon.
 - **Learns your words.** Add names, products, and jargon on the **Speech** page
   so they're spelled your way.
 - **Fits your PC.** Wordwright picks a speech model for your hardware: the most
@@ -35,11 +38,14 @@ Press `Esc` while recording to cancel without typing anything.
 | Cancel a recording | `Esc` (Wordwright only listens for Esc while recording) |
 | Teach it your words | **Speech** page → one word or phrase per line → **Save words** |
 | Change the speech model | **Speech** page → **Model** (Automatic is the default) |
+| Keep a record of dictations | **History** page → **Save my dictations** → choose a folder |
+| Pause or resume saving | Tray icon → **Save dictations to history** |
 | Move or hide the overlay | **Settings** page, or the tray icon menu |
 | Quit completely | **Quit Wordwright** in the app or tray menu (closing the window only hides it) |
 
-If no text field has focus when transcription finishes, the text is copied to
-the clipboard instead so the dictation isn't lost. Wordwright never presses
+If no text field has focus when transcription finishes, the dictation is kept
+in your history if it's on; otherwise it's copied to the clipboard so it isn't
+lost. Wordwright never presses
 Enter, so it can't submit a form or send a message for you.
 
 ### Speech models

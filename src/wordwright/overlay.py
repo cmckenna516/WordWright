@@ -84,8 +84,8 @@ class RecordingOverlay:
         value = getattr(state, "value", str(state))
         self._updates.put(("state", str(value)))
 
-    def show_launcher(self) -> None:
-        self._updates.put(("show_launcher", None))
+    def show_launcher(self, page: str | None = None) -> None:
+        self._updates.put(("show_launcher", page))
 
     def settings_changed(self) -> None:
         self._updates.put(("settings_changed", None))
@@ -395,9 +395,12 @@ class RecordingOverlay:
                     launcher.set_model_label(str(payload))
                 elif action == "show_launcher":
                     menu_open = False
+                    if payload:
+                        launcher.show_page(str(payload))
                     launcher.show()
                 elif action == "settings_changed":
                     settings_were_changed = True
+                    launcher.update_state(state)
                 elif action == "collapse_menu":
                     menu_open = False
 

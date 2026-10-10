@@ -42,6 +42,10 @@ STATE_THEME: dict[AppState, StateTheme] = {
         "COPIED TO CLIPBOARD", "No text field found — copied to clipboard",
         "#e1b75e", "#352b16", "#9f7837", (201, 153, 65),
     ),
+    AppState.SAVED: StateTheme(
+        "SAVED TO HISTORY", "No text field found — saved to your history",
+        "#e1b75e", "#352b16", "#9f7837", (201, 153, 65),
+    ),
     AppState.ERROR: StateTheme(
         "ERROR", "Something needs attention",
         "#d98bd9", "#351634", "#954a91", (180, 35, 190),

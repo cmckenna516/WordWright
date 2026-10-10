@@ -118,6 +118,14 @@ class TextInserterTests(unittest.TestCase):
         self.assertEqual(copied, ["Clipboard fallback"])
         self.assertEqual(typed, [])
 
+    def test_no_clipboard_when_the_caller_already_saved_it(self) -> None:
+        inserter, typed, copied, _ = make_inserter(text_target_detector=lambda: False)
+
+        result = inserter.deliver("Saved elsewhere", clipboard_fallback=False)
+
+        self.assertEqual(result, DeliveryResult.NOT_TYPED)
+        self.assertEqual((typed, copied), ([], []))
+
     def test_blocked_typing_falls_back_to_the_clipboard(self) -> None:
         def blocked(text: str) -> None:
             raise OSError(5, "blocked")

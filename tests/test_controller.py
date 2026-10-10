@@ -66,8 +66,11 @@ class FakeInserter:
         self.texts = []
         self.result = result
 
-    def deliver(self, text):
+    def deliver(self, text, clipboard_fallback=True):
         self.texts.append(text)
+        self.clipboard_fallback = clipboard_fallback
+        if self.result is DeliveryResult.CLIPBOARD and not clipboard_fallback:
+            return DeliveryResult.NOT_TYPED
         return self.result
 
 
@@ -208,6 +211,64 @@ class AppControllerTests(unittest.TestCase):
         self.assertFalse(recorder.cancelled)
         self.assertEqual(controller.state, AppState.IDLE)
         self.assertEqual(status.messages, messages)
+
+    def make_saving_controller(self, inserter, save):
+        status = FakeStatus()
+        controller = AppController(
+            config=AppConfig(),
+            recorder=FakeRecorder(),
+            transcriber=FakeTranscriber(),
+            inserter=inserter,
+            status=status,
+            hotkey=FakeHotkey(),
+            async_runner=ImmediateRunner(),
+            monotonic=iter(float(v) for v in range(1, 100)).__next__,
+            save_transcript=save,
+        )
+        controller.start()
+        controller.handle_hotkey()
+        controller.handle_hotkey()
+        return controller, status
+
+    def test_saved_dictation_is_still_typed(self) -> None:
+        saved = []
+        inserter = FakeInserter()
+        controller, _ = self.make_saving_controller(
+            inserter, lambda text, seconds: saved.append((text, seconds)) or True
+        )
+
+        self.assertEqual(saved, [("Testing one, two, three.", 1.0)])
+        self.assertEqual(inserter.texts, ["Testing one, two, three."])
+        self.assertFalse(inserter.clipboard_fallback)
+        self.assertEqual(controller.state, AppState.SUCCESS)
+
+    def test_saved_dictation_skips_the_clipboard_without_a_text_field(self) -> None:
+        controller, status = self.make_saving_controller(
+            FakeInserter(DeliveryResult.CLIPBOARD), lambda text, seconds: True
+        )
+
+        self.assertEqual(controller.state, AppState.SAVED)
+        self.assertIn("saved to your history", status.messages[-1])
+
+    def test_history_off_keeps_the_clipboard_fallback(self) -> None:
+        inserter = FakeInserter(DeliveryResult.CLIPBOARD)
+        controller, _ = self.make_saving_controller(inserter, lambda text, seconds: False)
+
+        self.assertTrue(inserter.clipboard_fallback)
+        self.assertEqual(controller.state, AppState.CLIPBOARD)
+
+    def test_failed_save_warns_and_falls_back_to_clipboard(self) -> None:
+        def broken(text, seconds):
+            raise FileNotFoundError("The history folder no longer exists.")
+
+        inserter = FakeInserter(DeliveryResult.CLIPBOARD)
+        with self.assertLogs("wordwright.controller", level="WARNING") as logs:
+            controller, status = self.make_saving_controller(inserter, broken)
+
+        self.assertTrue(inserter.clipboard_fallback)
+        self.assertEqual(controller.state, AppState.CLIPBOARD)
+        self.assertTrue(any("history folder" in m for m in status.messages))
+        self.assertNotIn("Testing one", "\n".join(logs.output))
 
     def test_escape_is_claimed_only_while_recording(self) -> None:
         controller, _, _, _ = self.make_controller()

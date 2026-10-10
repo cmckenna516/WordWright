@@ -98,6 +98,11 @@ class TrayStatus:
                 pystray.MenuItem(self._menu_status, None, enabled=False),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(
+                    "Save dictations to history",
+                    self._toggle_history,
+                    checked=self._history_checked,
+                ),
+                pystray.MenuItem(
                     "Show overlay at all times",
                     self._toggle_overlay_visibility,
                     checked=self._overlay_checked,
@@ -193,6 +198,29 @@ class TrayStatus:
     def _overlay_checked(self, item: Any) -> bool:
         del item
         return self._settings.snapshot().show_overlay_always
+
+    def _history_checked(self, item: Any) -> bool:
+        del item
+        return self._settings.snapshot().history_enabled
+
+    def _toggle_history(self, icon: Any, item: Any) -> None:
+        del icon, item
+        current = self._settings.snapshot()
+        folder_ok = bool(current.history_folder) and Path(current.history_folder).is_dir()
+        if not current.history_enabled and not folder_ok:
+            # A folder has to be chosen first; that happens on the History page.
+            if self._overlay is not None:
+                self._overlay.show_launcher("history")
+            return
+        self._settings.update(history_enabled=not current.history_enabled)
+        if self._overlay is not None:
+            self._overlay.settings_changed()
+        self._icon.update_menu()
+        self.notify(
+            "Dictations will be saved to your history."
+            if not current.history_enabled
+            else "History is off. Dictations are typed but not saved."
+        )
 
     def _toggle_overlay_visibility(self, icon: Any, item: Any) -> None:
         del icon, item

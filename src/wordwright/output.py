@@ -16,6 +16,9 @@ class DeliveryResult(str, Enum):
 
     TYPED = "typed"
     CLIPBOARD = "clipboard"
+    # Not typed or copied; only used when the dictation is already saved to
+    # history, so the user's clipboard is left alone.
+    NOT_TYPED = "not_typed"
 
 
 class _Rect(ctypes.Structure):
@@ -311,23 +314,27 @@ class TextInserter:
         self._clipboard_attempts = max(1, clipboard_attempts)
         self._clipboard_retry_seconds = clipboard_retry_seconds
 
-    def deliver(self, text: str) -> DeliveryResult:
+    def deliver(self, text: str, clipboard_fallback: bool = True) -> DeliveryResult:
         text = prepare_for_typing(text)
         if not text:
             raise ValueError("Cannot deliver an empty transcript.")
         if not self._text_target_detector():
-            self._copy_to_clipboard(text)
-            return DeliveryResult.CLIPBOARD
+            return self._fallback(text, clipboard_fallback)
 
         self._wait_for_modifier_release()
         self._sleep(self._delay)
         try:
             self._type(text)
         except Exception:
-            LOGGER.exception("Typing was blocked; copying the transcript instead")
-            self._copy_to_clipboard(text)
-            return DeliveryResult.CLIPBOARD
+            LOGGER.exception("Typing was blocked")
+            return self._fallback(text, clipboard_fallback)
         return DeliveryResult.TYPED
+
+    def _fallback(self, text: str, clipboard_fallback: bool) -> DeliveryResult:
+        if not clipboard_fallback:
+            return DeliveryResult.NOT_TYPED
+        self._copy_to_clipboard(text)
+        return DeliveryResult.CLIPBOARD
 
     def _wait_for_modifier_release(self) -> None:
         # Unicode key events sent while Ctrl or Alt is still down are read as
