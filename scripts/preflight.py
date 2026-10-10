@@ -44,7 +44,8 @@ def verify_model(model_directory: Path, audio_path: Path) -> None:
     if not audio_path.is_file():
         raise RuntimeError(f"Verification audio is missing: {audio_path}")
     # Download and test the model the app will choose on this machine.
-    plan = recommend(detect_hardware())
+    profile = detect_hardware()
+    plan = recommend(profile)
     print(f"Speech model for this PC: {plan.label} ({plan.reason})")
     fallback = (
         (plan.fallback.model, plan.fallback.compute_type) if plan.fallback else None
@@ -55,6 +56,7 @@ def verify_model(model_directory: Path, audio_path: Path) -> None:
         compute_type=plan.compute_type,
         download_root=model_directory,
         cpu_fallback=fallback,
+        cpu_threads=profile.cpu_threads,
     )
     transcriber.load()
     transcript = transcriber.transcribe(audio_path)

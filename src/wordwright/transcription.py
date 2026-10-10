@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -34,7 +35,11 @@ class LocalTranscriber:
         model_factory: Callable[..., Any] | None = None,
         vocabulary_provider: Callable[[], Sequence[str]] | None = None,
         cpu_fallback: tuple[str, str] | None = None,
+        cpu_threads: int = 0,
+        clock: Callable[[], float] = time.perf_counter,
     ) -> None:
+        self._cpu_threads = cpu_threads
+        self._clock = clock
         self._download_root = Path(download_root) if download_root else None
         self._model_factory = model_factory
         self._vocabulary_provider = vocabulary_provider or (lambda: ())
@@ -82,10 +87,12 @@ class LocalTranscriber:
             from faster_whisper import WhisperModel
 
             self._model_factory = WhisperModel
-        options = {
+        options: dict[str, Any] = {
             "device": self._device,
             "compute_type": self._compute_type,
         }
+        if self._device == "cpu" and self._cpu_threads > 0:
+            options["cpu_threads"] = self._cpu_threads
         model_source: str = self._model_name
         if self._download_root is not None:
             self._download_root.mkdir(parents=True, exist_ok=True)
@@ -132,6 +139,7 @@ class LocalTranscriber:
         # user's way. VAD removes silence first, which keeps the model from
         # filling quiet stretches with listed words. Only roughly the first 220
         # tokens of the list are used.
+        started = self._clock()
         segments, _ = self._model.transcribe(
             samples,
             language="en",
@@ -142,4 +150,23 @@ class LocalTranscriber:
             word_timestamps=False,
             hotwords=self.hotwords(),
         )
-        return "".join(segment.text for segment in segments).strip()
+        # Segments are generated lazily, so joining them is the actual work.
+        text = "".join(segment.text for segment in segments).strip()
+        self._log_timing(samples, self._clock() - started)
+        return text
+
+    def _log_timing(self, samples: np.ndarray | str | Path, elapsed: float) -> None:
+        """Log speed only, never transcript text, to tune model choice per PC."""
+
+        if not isinstance(samples, np.ndarray) or samples.size == 0:
+            return
+        audio_seconds = samples.size / 16_000
+        threads = f", {self._cpu_threads} threads" if self._device == "cpu" and self._cpu_threads else ""
+        LOGGER.info(
+            "Transcribed %.1f s of audio in %.2f s (%.2fx real time) with %s%s",
+            audio_seconds,
+            elapsed,
+            elapsed / audio_seconds,
+            self.active_label,
+            threads,
+        )

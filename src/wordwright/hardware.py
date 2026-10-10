@@ -34,6 +34,17 @@ class HardwareProfile:
     memory_gb: float | None
     cuda_ready: bool
 
+    @property
+    def cpu_threads(self) -> int:
+        """Threads for CPU transcription.
+
+        faster-whisper uses 4 by default, which leaves most of a modern CPU
+        idle. Half the logical CPUs, capped at 8, finishes sooner while leaving
+        the rest of the machine responsive during a transcription burst.
+        """
+
+        return max(4, min(8, self.logical_cpus // 2))
+
     def describe(self) -> str:
         memory = f"{self.memory_gb:.0f} GB RAM" if self.memory_gb else "unknown RAM"
         arch = "ARM64" if self.native_arm64 else "x64"

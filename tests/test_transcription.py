@@ -71,6 +71,43 @@ class LocalTranscriberTests(unittest.TestCase):
         transcriber.transcribe(np.zeros(16_000, dtype=np.float32))
         self.assertEqual(model.transcribe_kwargs["hotwords"], "Trace3, Glean, n8n")
 
+    def test_cpu_threads_apply_on_cpu_only(self) -> None:
+        calls = []
+
+        def factory(*args, **kwargs):
+            calls.append(kwargs)
+            if kwargs["device"] == "cuda":
+                raise RuntimeError("no GPU")
+            return FakeModel()
+
+        LocalTranscriber("small.en", "cpu", "int8", model_factory=factory, cpu_threads=8).load()
+        self.assertEqual(calls[-1]["cpu_threads"], 8)
+
+        calls.clear()
+        LocalTranscriber(
+            "large-v3-turbo", "cuda", "float16", model_factory=factory,
+            cpu_fallback=("small.en", "int8"), cpu_threads=8,
+        ).load()
+        self.assertNotIn("cpu_threads", calls[0])
+        self.assertEqual(calls[1]["cpu_threads"], 8)
+
+    def test_logs_speed_but_never_transcript_text(self) -> None:
+        ticks = iter([10.0, 11.5])
+        transcriber = LocalTranscriber(
+            "base.en", "cpu", "int8",
+            model_factory=lambda *args, **kwargs: FakeModel(),
+            cpu_threads=8,
+            clock=lambda: next(ticks),
+        )
+        transcriber.load()
+        with self.assertLogs("wordwright.transcription", level="INFO") as logs:
+            transcriber.transcribe(np.zeros(16_000 * 15, dtype=np.float32))
+
+        line = logs.output[-1]
+        self.assertIn("Transcribed 15.0 s of audio in 1.50 s (0.10x real time)", line)
+        self.assertIn("base.en · CPU, 8 threads", line)
+        self.assertNotIn("Hello", line)
+
     def test_gpu_failure_falls_back_to_the_cpu(self) -> None:
         calls = []
 

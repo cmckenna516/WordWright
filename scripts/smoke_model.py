@@ -44,13 +44,15 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    plan = resolve(args.model, detect_hardware())
+    profile = detect_hardware()
+    plan = resolve(args.model, profile)
     print(f"Model: {plan.label} ({plan.reason})")
     transcriber = LocalTranscriber(
         model_name=plan.model,
         device=plan.device,
         compute_type=plan.compute_type,
         download_root=args.model_dir,
+        cpu_threads=profile.cpu_threads,
     )
     started = time.perf_counter()
     transcriber.load()

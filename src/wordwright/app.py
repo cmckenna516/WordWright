@@ -57,6 +57,7 @@ def build_app(
         download_root=config.model_directory,
         vocabulary_provider=lambda: settings.snapshot().vocabulary,
         cpu_fallback=_fallback_pair(plan),
+        cpu_threads=profile.cpu_threads,
     )
 
     inserter = TextInserter(typing_delay_seconds=config.typing_delay_seconds)

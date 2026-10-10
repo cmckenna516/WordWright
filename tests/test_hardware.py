@@ -49,6 +49,14 @@ class ModelSelectionTests(unittest.TestCase):
 
 
 
+class CpuThreadTests(unittest.TestCase):
+    def test_uses_half_the_cpus_within_safe_bounds(self) -> None:
+        self.assertEqual(profile(logical_cpus=4).cpu_threads, 4)
+        self.assertEqual(profile(logical_cpus=12).cpu_threads, 6)
+        self.assertEqual(profile(logical_cpus=18).cpu_threads, 8)
+        self.assertEqual(profile(logical_cpus=24).cpu_threads, 8)
+
+
 class CommandLineOverrideTests(unittest.TestCase):
     def test_settings_choice_is_used_without_an_override(self) -> None:
         from wordwright.app import plan_from_config
