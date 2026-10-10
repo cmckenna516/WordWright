@@ -53,6 +53,7 @@ def main() -> int:
         compute_type=plan.compute_type,
         download_root=args.model_dir,
         cpu_threads=profile.cpu_threads,
+        beam_size=plan.beam_size,
     )
     started = time.perf_counter()
     transcriber.load()

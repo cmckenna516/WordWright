@@ -24,11 +24,19 @@ class ModelSelectionTests(unittest.TestCase):
 
         self.assertEqual((plan.model, plan.device), ("small.en", "cpu"))
 
-    def test_arm_pc_uses_the_faster_model(self) -> None:
-        plan = recommend(profile(native_arm64=True, logical_cpus=18, memory_gb=24.0))
+    def test_arm_pc_uses_the_faster_model_with_greedy_decoding(self) -> None:
+        plan = recommend(profile(native_arm64=True, logical_cpus=12, memory_gb=24.0))
 
-        self.assertEqual(plan.model, "base.en")
+        self.assertEqual((plan.model, plan.beam_size), ("base.en", 1))
         self.assertIn("ARM64", plan.reason)
+
+    def test_capable_cpu_and_gpu_keep_full_beam_search(self) -> None:
+        self.assertEqual(recommend(profile()).beam_size, 5)
+        self.assertEqual(recommend(profile(cuda_ready=True)).beam_size, 5)
+
+    def test_manual_choice_on_arm_stays_greedy(self) -> None:
+        plan = resolve("small.en", profile(native_arm64=True))
+        self.assertEqual((plan.model, plan.beam_size), ("small.en", 1))
 
     def test_light_cpu_uses_the_faster_model(self) -> None:
         self.assertEqual(recommend(profile(logical_cpus=4, memory_gb=8.0)).model, "base.en")

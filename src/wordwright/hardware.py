@@ -59,24 +59,42 @@ class ModelPlan:
     compute_type: str
     reason: str
     fallback: ModelPlan | None = None
+    # Beam search width. 5 is Whisper's accuracy default; 1 (greedy) is roughly
+    # twice as fast on a CPU for a small accuracy cost.
+    beam_size: int = 5
 
     @property
     def label(self) -> str:
         return f"{self.model} · {'GPU' if self.device == 'cuda' else 'CPU'}"
 
 
+def constrained_cpu(profile: HardwareProfile) -> bool:
+    """CPUs where transcription speed, not accuracy, is the limiting factor."""
+
+    memory_ok = profile.memory_gb is None or profile.memory_gb >= 12
+    return profile.native_arm64 or profile.logical_cpus < 8 or not memory_ok
+
+
+def cpu_beam_size(profile: HardwareProfile) -> int:
+    return 1 if constrained_cpu(profile) else 5
+
+
 def cpu_plan(profile: HardwareProfile) -> ModelPlan:
     if profile.native_arm64:
         # CTranslate2 publishes no Windows ARM64 build, so on ARM PCs the speech
-        # engine runs under x64 emulation and the smaller model stays responsive.
+        # engine runs under x64 emulation. Measured on a 12-core Snapdragon X2
+        # Elite: base.en with beam 5 ran at about 0.27x real time, too slow for
+        # long dictations, so use the small model with greedy decoding.
         return ModelPlan(
             "base.en", "cpu", "int8",
             "ARM64 PC: the speech engine runs under x64 emulation",
+            beam_size=1,
         )
-    memory_ok = profile.memory_gb is None or profile.memory_gb >= 12
-    if profile.logical_cpus >= 8 and memory_ok:
+    if not constrained_cpu(profile):
         return ModelPlan("small.en", "cpu", "int8", "Capable CPU, no usable NVIDIA GPU")
-    return ModelPlan("base.en", "cpu", "int8", "Lighter CPU: favoring speed")
+    return ModelPlan(
+        "base.en", "cpu", "int8", "Lighter CPU: favoring speed", beam_size=1
+    )
 
 
 def recommend(profile: HardwareProfile) -> ModelPlan:
@@ -94,7 +112,9 @@ def resolve(choice: str, profile: HardwareProfile) -> ModelPlan:
 
     if choice == AUTO or choice not in MODEL_LABELS:
         return recommend(profile)
-    cpu = ModelPlan(choice, "cpu", "int8", "Chosen in Settings")
+    cpu = ModelPlan(
+        choice, "cpu", "int8", "Chosen in Settings", beam_size=cpu_beam_size(profile)
+    )
     if profile.cuda_ready:
         return ModelPlan(choice, "cuda", "float16", "Chosen in Settings", fallback=cpu)
     return cpu

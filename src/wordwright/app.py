@@ -29,10 +29,10 @@ def plan_from_config(config: AppConfig, choice: str, profile: HardwareProfile) -
     )
 
 
-def _fallback_pair(plan: ModelPlan) -> tuple[str, str] | None:
+def _fallback(plan: ModelPlan) -> tuple[str, str, int] | None:
     if plan.fallback is None:
         return None
-    return plan.fallback.model, plan.fallback.compute_type
+    return plan.fallback.model, plan.fallback.compute_type, plan.fallback.beam_size
 
 
 def build_app(
@@ -56,8 +56,9 @@ def build_app(
         compute_type=plan.compute_type,
         download_root=config.model_directory,
         vocabulary_provider=lambda: settings.snapshot().vocabulary,
-        cpu_fallback=_fallback_pair(plan),
+        cpu_fallback=_fallback(plan),
         cpu_threads=profile.cpu_threads,
+        beam_size=plan.beam_size,
     )
 
     inserter = TextInserter(typing_delay_seconds=config.typing_delay_seconds)
@@ -84,7 +85,8 @@ def build_app(
                 new_plan.model,
                 new_plan.device,
                 new_plan.compute_type,
-                _fallback_pair(new_plan),
+                _fallback(new_plan),
+                new_plan.beam_size,
             )
         )
 

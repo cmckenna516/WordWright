@@ -48,7 +48,9 @@ def verify_model(model_directory: Path, audio_path: Path) -> None:
     plan = recommend(profile)
     print(f"Speech model for this PC: {plan.label} ({plan.reason})")
     fallback = (
-        (plan.fallback.model, plan.fallback.compute_type) if plan.fallback else None
+        (plan.fallback.model, plan.fallback.compute_type, plan.fallback.beam_size)
+        if plan.fallback
+        else None
     )
     transcriber = LocalTranscriber(
         model_name=plan.model,
@@ -57,6 +59,7 @@ def verify_model(model_directory: Path, audio_path: Path) -> None:
         download_root=model_directory,
         cpu_fallback=fallback,
         cpu_threads=profile.cpu_threads,
+        beam_size=plan.beam_size,
     )
     transcriber.load()
     transcript = transcriber.transcribe(audio_path)

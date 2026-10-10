@@ -71,6 +71,25 @@ class LocalTranscriberTests(unittest.TestCase):
         transcriber.transcribe(np.zeros(16_000, dtype=np.float32))
         self.assertEqual(model.transcribe_kwargs["hotwords"], "Trace3, Glean, n8n")
 
+    def test_beam_size_is_used_and_survives_gpu_fallback(self) -> None:
+        models = []
+
+        def factory(*args, **kwargs):
+            if kwargs["device"] == "cuda":
+                raise RuntimeError("no GPU")
+            model = FakeModel()
+            models.append(model)
+            return model
+
+        transcriber = LocalTranscriber(
+            "large-v3-turbo", "cuda", "float16", model_factory=factory,
+            cpu_fallback=("base.en", "int8", 1),
+        )
+        transcriber.load()
+        transcriber.transcribe(np.zeros(16_000, dtype=np.float32))
+
+        self.assertEqual(models[-1].transcribe_kwargs["beam_size"], 1)
+
     def test_cpu_threads_apply_on_cpu_only(self) -> None:
         calls = []
 
@@ -105,7 +124,7 @@ class LocalTranscriberTests(unittest.TestCase):
 
         line = logs.output[-1]
         self.assertIn("Transcribed 15.0 s of audio in 1.50 s (0.10x real time)", line)
-        self.assertIn("base.en · CPU, 8 threads", line)
+        self.assertIn("base.en · CPU, 8 threads, beam 5", line)
         self.assertNotIn("Hello", line)
 
     def test_gpu_failure_falls_back_to_the_cpu(self) -> None:

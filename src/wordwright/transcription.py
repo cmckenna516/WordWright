@@ -34,8 +34,9 @@ class LocalTranscriber:
         download_root: Path | str | None = None,
         model_factory: Callable[..., Any] | None = None,
         vocabulary_provider: Callable[[], Sequence[str]] | None = None,
-        cpu_fallback: tuple[str, str] | None = None,
+        cpu_fallback: tuple[str, str, int] | tuple[str, str] | None = None,
         cpu_threads: int = 0,
+        beam_size: int = 5,
         clock: Callable[[], float] = time.perf_counter,
     ) -> None:
         self._cpu_threads = cpu_threads
@@ -44,17 +45,19 @@ class LocalTranscriber:
         self._model_factory = model_factory
         self._vocabulary_provider = vocabulary_provider or (lambda: ())
         self._model: Any | None = None
-        self.configure(model_name, device, compute_type, cpu_fallback)
+        self.configure(model_name, device, compute_type, cpu_fallback, beam_size)
 
     def configure(
         self,
         model_name: str,
         device: str,
         compute_type: str,
-        cpu_fallback: tuple[str, str] | None = None,
+        cpu_fallback: tuple[str, str, int] | tuple[str, str] | None = None,
+        beam_size: int = 5,
     ) -> None:
         """Select a different model. It takes effect on the next load()."""
 
+        self._beam_size = max(1, beam_size)
         self._model_name = model_name
         self._device = device
         self._compute_type = compute_type
@@ -78,8 +81,9 @@ class LocalTranscriber:
             if self._device != "cuda" or self._cpu_fallback is None:
                 raise
             LOGGER.exception("GPU model load failed; falling back to the CPU")
-            model_name, compute_type = self._cpu_fallback
-            self.configure(model_name, "cpu", compute_type)
+            model_name, compute_type, *rest = self._cpu_fallback
+            beam_size = rest[0] if rest else self._beam_size
+            self.configure(model_name, "cpu", compute_type, beam_size=beam_size)
             self._load_current()
 
     def _load_current(self) -> None:
@@ -161,7 +165,7 @@ class LocalTranscriber:
             samples,
             language="en",
             task="transcribe",
-            beam_size=5,
+            beam_size=self._beam_size,
             vad_filter=True,
             condition_on_previous_text=False,
             word_timestamps=False,
@@ -179,6 +183,7 @@ class LocalTranscriber:
             return
         audio_seconds = samples.size / 16_000
         threads = f", {self._cpu_threads} threads" if self._device == "cpu" and self._cpu_threads else ""
+        threads += f", beam {self._beam_size}"
         LOGGER.info(
             "Transcribed %.1f s of audio in %.2f s (%.2fx real time) with %s%s",
             audio_seconds,
