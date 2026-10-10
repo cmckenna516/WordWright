@@ -92,7 +92,7 @@ class LocalTranscriberTests(unittest.TestCase):
         self.assertEqual(calls[1]["cpu_threads"], 8)
 
     def test_logs_speed_but_never_transcript_text(self) -> None:
-        ticks = iter([10.0, 11.5])
+        ticks = iter([0.0, 2.0, 10.0, 11.5])  # load start/end, then dictation
         transcriber = LocalTranscriber(
             "base.en", "cpu", "int8",
             model_factory=lambda *args, **kwargs: FakeModel(),
@@ -129,6 +129,44 @@ class LocalTranscriberTests(unittest.TestCase):
         self.assertTrue(transcriber.is_loaded)
         self.assertEqual(calls[-1][0], ("small.en",))
         self.assertEqual(calls[-1][1]["device"], "cpu")
+        self.assertEqual(transcriber.active_label, "small.en · CPU")
+
+    def test_warm_up_runs_before_ready_and_is_not_timed(self) -> None:
+        model = FakeModel()
+        calls = []
+        original = model.transcribe
+
+        def recording(samples, **kwargs):
+            calls.append(kwargs)
+            return original(samples, **kwargs)
+
+        model.transcribe = recording
+        transcriber = LocalTranscriber(
+            "base.en", "cpu", "int8", model_factory=lambda *args, **kwargs: model
+        )
+        with self.assertLogs("wordwright.transcription", level="INFO") as logs:
+            transcriber.load()
+
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(calls[0]["vad_filter"])
+        self.assertFalse(calls[1]["vad_filter"])
+        self.assertFalse(any("Transcribed" in line for line in logs.output))
+        self.assertTrue(any("ready in" in line for line in logs.output))
+
+    def test_gpu_warm_up_failure_falls_back_to_the_cpu(self) -> None:
+        class BrokenGpuModel(FakeModel):
+            def transcribe(self, samples, **kwargs):
+                raise RuntimeError("cudnn_ops64_9.dll could not be loaded")
+
+        def factory(*args, **kwargs):
+            return BrokenGpuModel() if kwargs["device"] == "cuda" else FakeModel()
+
+        transcriber = LocalTranscriber(
+            "large-v3-turbo", "cuda", "float16", model_factory=factory,
+            cpu_fallback=("small.en", "int8"),
+        )
+        transcriber.load()
+
         self.assertEqual(transcriber.active_label, "small.en · CPU")
 
     def test_cpu_failure_is_not_hidden(self) -> None:

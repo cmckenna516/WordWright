@@ -102,7 +102,24 @@ class LocalTranscriber:
             else:
                 options["download_root"] = str(self._download_root)
         LOGGER.info("Loading %s", self.active_label)
-        self._model = self._model_factory(model_source, **options)
+        started = self._clock()
+        model = self._model_factory(model_source, **options)
+        # Warm up before reporting ready. The first transcription pays one-time
+        # costs (voice-detection model load, memory setup) that otherwise land on
+        # the user's first dictation. On a GPU this also surfaces missing CUDA
+        # libraries here, where load() can still fall back to the CPU.
+        self._warm_up(model)
+        self._model = model
+        LOGGER.info("%s ready in %.1f s", self.active_label, self._clock() - started)
+
+    @staticmethod
+    def _warm_up(model: Any) -> None:
+        silence = np.zeros(16_000, dtype=np.float32)
+        # VAD on silence loads the voice-detection model and skips the encoder.
+        list(model.transcribe(silence, language="en", vad_filter=True)[0])
+        # Faint noise without VAD runs the encoder and decoder once.
+        noise = np.random.default_rng(0).normal(0, 1e-3, 16_000).astype(np.float32)
+        list(model.transcribe(noise, language="en", beam_size=1, vad_filter=False)[0])
 
     def _find_cached_model(self) -> Path | None:
         if self._download_root is None:
