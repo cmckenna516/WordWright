@@ -28,11 +28,7 @@ class AppController:
         async_runner: Callable[[Callable[[], None]], None] | None = None,
         monotonic: Callable[[], float] = time.monotonic,
         hotkey_label: Callable[[], str] = lambda: "Ctrl+Alt+Space",
-        save_transcript: Callable[[str, float], None] | None = None,
     ) -> None:
-        # Writes a dictation to history; raises if it can't. None or a no-op
-        # when history is off (the callable decides).
-        self._save_transcript = save_transcript
         self._hotkey_label = hotkey_label
         self._config = config
         self._recorder = recorder
@@ -232,10 +228,7 @@ class AppController:
             with self._state_lock:
                 if self._shutting_down:
                     return
-            # Save before typing so nothing is lost if typing fails. When the
-            # dictation is saved, the clipboard is never used as a fallback.
-            saved = self._save(text, samples.size / self._config.sample_rate)
-            delivery = self._inserter.deliver(text, clipboard_fallback=not saved)
+            delivery = self._inserter.deliver(text)
         except Exception as exc:
             LOGGER.exception("Unable to transcribe or type")
             self._fail(
@@ -244,13 +237,7 @@ class AppController:
             )
             return
 
-        if delivery is DeliveryResult.NOT_TYPED:
-            self._set_state(AppState.SAVED)
-            self._status.notify(
-                "No text field could take the transcript, so it was saved to your history only."
-            )
-            self._return_to_idle_after(1.5, AppState.SAVED)
-        elif delivery is DeliveryResult.CLIPBOARD:
+        if delivery is DeliveryResult.CLIPBOARD:
             self._set_state(AppState.CLIPBOARD)
             self._status.notify(
                 "No text field could take the transcript, so it was copied to the clipboard."
@@ -259,19 +246,6 @@ class AppController:
         else:
             self._set_state(AppState.SUCCESS)
             self._return_to_idle_after(1.5, AppState.SUCCESS)
-
-    def _save(self, text: str, audio_seconds: float) -> bool:
-        if self._save_transcript is None:
-            return False
-        try:
-            return bool(self._save_transcript(text, audio_seconds))
-        except Exception as exc:
-            # Never log the text itself, only what went wrong.
-            LOGGER.warning("Could not save to history (%s: %s)", type(exc).__name__, exc)
-            self._status.notify(
-                "Couldn't save this dictation to your history folder. Check that it still exists."
-            )
-            return False
 
     def _fail(
         self,

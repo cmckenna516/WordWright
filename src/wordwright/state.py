@@ -12,5 +12,4 @@ class AppState(str, Enum):
     TRANSCRIBING = "Transcribing"
     SUCCESS = "Text typed"
     CLIPBOARD = "Copied to clipboard"
-    SAVED = "Saved to history"
     ERROR = "Error"

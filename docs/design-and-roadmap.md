@@ -15,8 +15,8 @@ features must not compromise the reliability of the core loop:
 
 `hotkey -> record -> local transcription -> type at the cursor`
 
-When no text field has focus, the dictation is kept in history if it's on;
-otherwise it's copied to the clipboard so it is never lost.
+The clipboard is touched only when no text field has focus, so a dictation is
+never lost. That fallback is replaced by the archive once it exists.
 
 ## Originality and provenance
 
@@ -88,16 +88,13 @@ is enabled.
 
 ## Privacy and local storage
 
-History is strictly opt-in and disabled by default.
+The transcript archive is strictly opt-in and disabled by default.
 
 - Enabling it requires the user to choose a local folder first.
 - Transcript text is never written to disk while it is disabled.
 - Recorded audio is never retained.
-- Each day gets one Markdown file (`YYYY-MM-DD.md`). Each entry's heading
-  holds the time, spoken length, and word count, followed by the text.
-- Stats are read from those headings when the History page opens, so editing
-  or deleting files is reflected and nothing else needs to be stored.
-- No retention settings: the user manages the files with ordinary tools.
+- The archive is a single running file in the chosen folder that the user can
+  open, edit, move, or delete with ordinary tools.
 
 ## Feature roadmap
 
@@ -119,12 +116,9 @@ supported product.
   and can be changed in Settings.
 - An idle overlay that redraws only when something changes.
 
-- Opt-in history in a folder the user chooses, with local stats and a tray
-  toggle.
-
 ### Next
 
-- Decide from real use whether history needs more than one folder.
+- Running transcript archive in a folder the user chooses.
 
 ### Later possibilities, not committed
 

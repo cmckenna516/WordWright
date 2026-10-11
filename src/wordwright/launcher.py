@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import ctypes
 import os
-import subprocess
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
 from typing import Callable
 
 from . import __version__
-from .archive import Totals, collect_stats
 from .hardware import MODEL_LABELS
 from .hotkeys import KEY_CHOICES, MODIFIER_CHOICES, hotkey_label, parse_hotkey
 from .settings import SettingsStore, parse_vocabulary
@@ -54,7 +52,6 @@ class LauncherWindow:
         self._on_model_changed = on_model_changed or (lambda: None)
         self._model_explainer = model_explainer or (lambda: "")
         self._state = AppState.LOADING.value
-        self._current_page = ""
         self._pages: dict[str, tk.Frame] = {}
         self._nav_buttons: dict[str, tk.Button] = {}
         self._configure_root()
@@ -155,7 +152,13 @@ class LauncherWindow:
         self._pages["dictate"] = self._build_dictate(content)
         self._pages["speech"] = self._build_speech(content)
         self._pages["settings"] = self._build_settings(content)
-        self._pages["history"] = self._build_history(content)
+        self._pages["history"] = self._build_future_page(
+            content,
+            "Optional local archive",
+            "History is off.",
+            "Nothing is saved unless you explicitly choose a local folder and enable history.",
+            "A running archive file of your dictations, kept in a folder you choose.",
+        )
         for page in self._pages.values():
             page.grid(row=0, column=0, sticky="nsew")
 
@@ -330,166 +333,42 @@ class LauncherWindow:
                 highlightthickness=1,
             ).pack(side="left")
 
-    def _build_history(self, parent: tk.Widget) -> tk.Frame:
+    def _build_future_page(
+        self,
+        parent: tk.Widget,
+        eyebrow: str,
+        title: str,
+        copy: str,
+        planned: str,
+    ) -> tk.Frame:
         page = self._page(parent)
-        self._heading(
-            page,
-            "Local history",
-            "Keep a record when you want one",
-            "When on, each dictation is also saved to a folder you choose, one Markdown file "
-            "per day. Turn it off to dictate without keeping anything. Nothing leaves this PC.",
-        )
-        body = tk.Frame(page, bg=self._BACKGROUND)
-        body.pack(fill="both", expand=True, pady=(16, 0))
-        self._history_var = tk.BooleanVar(value=self._settings.snapshot().history_enabled)
-        self._check_row(
-            body,
-            "Save my dictations",
-            "Also available from the tray icon menu, so you can switch it per conversation.",
-            self._history_var,
-            self._toggle_history,
-        )
-
-        folder_row = tk.Frame(body, bg=self._BACKGROUND)
-        folder_row.pack(fill="x", pady=(6, 0))
-        tk.Label(folder_row, text="Folder", bg=self._BACKGROUND, fg=self._TEXT, font=("Trebuchet MS", 9)).pack(side="left")
-        for text, command in (("Open", self._open_history_folder), ("Choose…", self._choose_history_folder)):
-            tk.Button(
-                folder_row,
-                text=text,
-                command=command,
-                bg=self._PANEL,
-                fg=self._TEXT,
-                activebackground=self._PANEL_ACTIVE,
-                activeforeground=self._TEXT,
-                bd=0,
-                padx=10,
-                pady=5,
-                font=("Courier New", 8),
-            ).pack(side="right", padx=(6, 0))
-        self._folder_label = tk.Label(
-            folder_row,
-            text="",
-            bg=self._BACKGROUND,
-            fg=self._MUTED,
-            anchor="w",
-            font=("Courier New", 8),
-        )
-        self._folder_label.pack(side="left", fill="x", expand=True, padx=(12, 0))
-
+        self._heading(page, eyebrow, title, copy)
         panel = tk.Frame(
-            body,
+            page,
             bg=self._PANEL,
             highlightbackground=self._BORDER,
             highlightthickness=1,
-            padx=16,
-            pady=14,
+            padx=22,
+            pady=22,
         )
-        panel.pack(fill="x", pady=(16, 0))
-        self._stat_labels: dict[str, tk.Label] = {}
-        for column, (key, title) in enumerate(
-            (("today", "TODAY"), ("week", "LAST 7 DAYS"), ("all_time", "ALL TIME"))
-        ):
-            panel.grid_columnconfigure(column, weight=1)
-            tk.Label(panel, text=title, bg=self._PANEL, fg=self._ACCENT, font=("Courier New", 7, "bold")).grid(row=0, column=column, sticky="w")
-            label = tk.Label(panel, text="", bg=self._PANEL, fg=self._BODY, justify="left", font=("Trebuchet MS", 9))
-            label.grid(row=1, column=column, sticky="nw", pady=(6, 0))
-            self._stat_labels[key] = label
-        self._stats_note = tk.Label(
-            body,
-            text="",
-            bg=self._BACKGROUND,
+        panel.pack(fill="x", pady=(28, 0))
+        tk.Label(
+            panel,
+            text="PLANNED FOR A LATER BUILD",
+            bg=self._PANEL,
+            fg=self._ACCENT,
+            font=("Courier New", 8, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            panel,
+            text=planned,
+            bg=self._PANEL,
             fg=self._MUTED,
             justify="left",
-            wraplength=540,
-            font=("Trebuchet MS", 8),
-        )
-        self._stats_note.pack(anchor="w", pady=(8, 0))
+            wraplength=500,
+            font=("Trebuchet MS", 9),
+        ).pack(anchor="w", pady=(9, 0))
         return page
-
-    @staticmethod
-    def _format_totals(totals: Totals) -> str:
-        if totals.dictations == 0:
-            return "No dictations"
-        minutes = totals.seconds / 60
-        return (
-            f"{totals.dictations} dictation{'s' if totals.dictations != 1 else ''}\n"
-            f"{totals.words:,} words\n"
-            f"{minutes:.0f} min spoken\n"
-            f"≈ {totals.minutes_saved:.0f} min saved"
-        )
-
-    def _history_folder(self) -> Path | None:
-        folder = self._settings.snapshot().history_folder
-        return Path(folder) if folder else None
-
-    def _sync_history_controls(self) -> None:
-        settings = self._settings.snapshot()
-        self._history_var.set(settings.history_enabled)
-        folder = self._history_folder()
-        if folder is None:
-            self._folder_label.configure(text="Not chosen yet", fg=self._MUTED)
-        elif not folder.is_dir():
-            self._folder_label.configure(text=f"{folder} (missing)", fg=theme_for(AppState.ERROR).accent)
-        else:
-            self._folder_label.configure(text=self._shorten(str(folder)), fg=self._BODY)
-        self._history_card.configure(
-            text="Saving to history" if settings.history_enabled else "History is off"
-        )
-
-    @staticmethod
-    def _shorten(path: str, limit: int = 48) -> str:
-        return path if len(path) <= limit else "…" + path[-(limit - 1):]
-
-    def refresh_history(self) -> None:
-        self._sync_history_controls()
-        folder = self._history_folder()
-        if folder is None or not folder.is_dir():
-            for label in self._stat_labels.values():
-                label.configure(text="—")
-            self._stats_note.configure(text="Choose a folder to start keeping a record.")
-            return
-        stats = collect_stats(folder)
-        for key, label in self._stat_labels.items():
-            label.configure(text=self._format_totals(getattr(stats, key)))
-        self._stats_note.configure(
-            text="Time saved compares speaking with typing at 40 words per minute. "
-            "Stats come from the files in your folder, so edits and deletions are reflected here."
-        )
-
-    def _choose_history_folder(self) -> bool:
-        selected = filedialog.askdirectory(
-            parent=self._root,
-            title="Choose a folder for your dictation history",
-            mustexist=True,
-        )
-        if not selected:
-            return False
-        self._settings.update(history_folder=str(Path(selected)))
-        self._on_settings_changed()
-        self.refresh_history()
-        return True
-
-    def _toggle_history(self) -> None:
-        wanted = self._history_var.get()
-        folder = self._history_folder()
-        if wanted and (folder is None or not folder.is_dir()):
-            if not self._choose_history_folder():
-                self._history_var.set(False)
-                return
-        self._settings.update(history_enabled=wanted)
-        self._on_settings_changed()
-        self.refresh_history()
-
-    def _open_history_folder(self) -> None:
-        folder = self._history_folder()
-        if folder is None or not folder.is_dir():
-            self._choose_history_folder()
-            return
-        if os.name == "nt":
-            os.startfile(folder)  # type: ignore[attr-defined]
-        else:
-            subprocess.Popen(["xdg-open", str(folder)])
 
     def _build_speech(self, parent: tk.Widget) -> tk.Frame:
         page = self._page(parent)
@@ -840,12 +719,7 @@ class LauncherWindow:
         self._on_settings_changed()
 
     def show_page(self, name: str) -> None:
-        if name not in self._pages:
-            name = "dictate"
-        self._current_page = name
         self._pages[name].tkraise()
-        if name == "history":
-            self.refresh_history()
         for key, button in self._nav_buttons.items():
             active = key == name
             button.configure(
@@ -869,10 +743,9 @@ class LauncherWindow:
         else:
             label = "Transcribing…" if state == AppState.TRANSCRIBING.value else "Please wait"
             self._record_button.configure(text=label, bg="#313534", fg="#88887f", state="disabled")
-        self._sync_history_controls()
-        finished = {AppState.SUCCESS.value, AppState.SAVED.value}
-        if state in finished and self._current_page == "history":
-            self.refresh_history()
+        self._history_card.configure(
+            text="History is on" if self._settings.snapshot().history_enabled else "History is off"
+        )
 
     def is_visible(self) -> bool:
         try:

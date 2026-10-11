@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 
-from .archive import TranscriptArchive
 from .audio import AudioRecorder
 from .config import AppConfig
 from .controller import AppController
@@ -64,15 +63,6 @@ def build_app(
     )
 
     inserter = TextInserter(typing_delay_seconds=config.typing_delay_seconds)
-    archive = TranscriptArchive()
-
-    def save_transcript(text: str, audio_seconds: float) -> bool:
-        current = settings.snapshot()
-        if not (current.history_enabled and current.history_folder):
-            return False
-        archive.save(current.history_folder, text, audio_seconds)
-        return True
-
     controller = AppController(
         config=config,
         recorder=recorder,
@@ -80,7 +70,6 @@ def build_app(
         inserter=inserter,
         status=status,
         hotkey_label=lambda: hotkey_label(settings.snapshot().hotkey),
-        save_transcript=save_transcript,
     )
     hotkey = create_hotkeys(
         settings.snapshot().hotkey,
