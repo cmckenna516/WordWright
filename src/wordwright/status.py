@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 from pathlib import Path
 from typing import Callable, Any
@@ -13,6 +14,8 @@ from .state import AppState
 from .theme import theme_for
 
 __all__ = ["AppState", "TrayStatus", "make_status_icon"]
+
+LOGGER = logging.getLogger(__name__)
 
 
 def logo_path() -> Path:
@@ -138,7 +141,10 @@ class TrayStatus:
             self._sounds.play_stop()
         if self._overlay is not None:
             self._overlay.update(state)
-        self._icon.update_menu()
+        try:
+            self._icon.update_menu()
+        except Exception:
+            LOGGER.exception("Unable to refresh the tray menu")
 
     def notify(self, message: str, title: str = "Wordwright") -> None:
         try:

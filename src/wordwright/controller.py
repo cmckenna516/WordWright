@@ -273,11 +273,17 @@ class AppController:
     def _set_state(self, state: AppState) -> None:
         with self._state_lock:
             self._state = state
-        set_cancel = getattr(self._hotkey, "set_cancel_enabled", None)
-        if set_cancel is not None:
-            # Esc is claimed from other apps only while a recording is running.
-            set_cancel(state is AppState.RECORDING)
-        self._status.update(state)
+        # Display problems (tray, overlay, sounds, Esc registration) must never
+        # stop a dictation. A tray-menu error once left the app stuck on
+        # "Transcribing" because transcription was scheduled after this call.
+        try:
+            set_cancel = getattr(self._hotkey, "set_cancel_enabled", None)
+            if set_cancel is not None:
+                # Esc is claimed from other apps only while a recording is running.
+                set_cancel(state is AppState.RECORDING)
+            self._status.update(state)
+        except Exception:
+            LOGGER.exception("Status display failed while showing %s", state.value)
 
     @staticmethod
     def _start_daemon(function: Callable[[], None]) -> None:

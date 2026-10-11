@@ -209,6 +209,31 @@ class AppControllerTests(unittest.TestCase):
         self.assertEqual(controller.state, AppState.IDLE)
         self.assertEqual(status.messages, messages)
 
+    def test_a_broken_status_display_never_stops_transcription(self) -> None:
+        class BrokenStatus(FakeStatus):
+            def update(self, state) -> None:
+                super().update(state)
+                raise ValueError("tray menu could not be built")
+
+        inserter = FakeInserter()
+        controller = AppController(
+            config=AppConfig(),
+            recorder=FakeRecorder(),
+            transcriber=FakeTranscriber(),
+            inserter=inserter,
+            status=BrokenStatus(),
+            hotkey=FakeHotkey(),
+            async_runner=ImmediateRunner(),
+            monotonic=iter([1.0, 2.0]).__next__,
+        )
+        with self.assertLogs("wordwright.controller", level="ERROR"):
+            controller.start()
+            controller.handle_hotkey()
+            controller.handle_hotkey()
+
+        self.assertEqual(inserter.texts, ["Testing one, two, three."])
+        self.assertEqual(controller.state, AppState.SUCCESS)
+
     def test_escape_is_claimed_only_while_recording(self) -> None:
         controller, _, _, _ = self.make_controller()
         controller.start()
