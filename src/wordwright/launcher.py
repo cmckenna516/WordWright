@@ -9,10 +9,10 @@ from tkinter import filedialog
 from typing import Callable
 
 from . import __version__
-from .archive import Totals, collect_stats, combine_stats
+from .archive import Totals, collect_stats
 from .hardware import MODEL_LABELS
 from .hotkeys import KEY_CHOICES, MODIFIER_CHOICES, hotkey_label, parse_hotkey
-from .settings import SettingsStore, folder_labels, parse_vocabulary
+from .settings import SettingsStore, parse_vocabulary
 from .sounds import SoundPlayer
 from .state import AppState
 from .theme import theme_for
@@ -336,50 +336,46 @@ class LauncherWindow:
             page,
             "Local history",
             "Keep a record when you want one",
-            "Off by default. Add folders for different purposes, such as a project and your "
-            "meetings, then pick where dictations go. Each folder gets one Markdown file per day.",
+            "When on, each dictation is also saved to a folder you choose, one Markdown file "
+            "per day. Turn it off to dictate without keeping anything. Nothing leaves this PC.",
         )
         body = tk.Frame(page, bg=self._BACKGROUND)
-        body.pack(fill="both", expand=True, pady=(14, 0))
-        self._section_label(body, "SAVE DICTATIONS TO")
-        self._destination_var = tk.StringVar(value="")
-
-        # Folder rows scroll when there are more than fit.
-        holder = tk.Frame(body, bg=self._BACKGROUND)
-        holder.pack(fill="x")
-        self._destination_canvas = tk.Canvas(
-            holder, bg=self._BACKGROUND, highlightthickness=0, height=150
-        )
-        scrollbar = tk.Scrollbar(holder, orient="vertical", command=self._destination_canvas.yview)
-        self._destination_rows = tk.Frame(self._destination_canvas, bg=self._BACKGROUND)
-        self._destination_rows.bind(
-            "<Configure>",
-            lambda event: self._destination_canvas.configure(
-                scrollregion=self._destination_canvas.bbox("all")
-            ),
-        )
-        window = self._destination_canvas.create_window((0, 0), window=self._destination_rows, anchor="nw")
-        self._destination_canvas.bind(
-            "<Configure>",
-            lambda event: self._destination_canvas.itemconfigure(window, width=event.width),
-        )
-        self._destination_canvas.configure(yscrollcommand=scrollbar.set)
-        self._destination_canvas.pack(side="left", fill="x", expand=True)
-        self._destination_scrollbar = scrollbar
-
-        tk.Button(
+        body.pack(fill="both", expand=True, pady=(16, 0))
+        self._history_var = tk.BooleanVar(value=self._settings.snapshot().history_enabled)
+        self._check_row(
             body,
-            text="+  Add folder…",
-            command=self._add_history_folder,
-            bg=self._PANEL,
-            fg=self._TEXT,
-            activebackground=self._PANEL_ACTIVE,
-            activeforeground=self._TEXT,
-            bd=0,
-            padx=12,
-            pady=5,
+            "Save my dictations",
+            "Also available from the tray icon menu, so you can switch it per conversation.",
+            self._history_var,
+            self._toggle_history,
+        )
+
+        folder_row = tk.Frame(body, bg=self._BACKGROUND)
+        folder_row.pack(fill="x", pady=(6, 0))
+        tk.Label(folder_row, text="Folder", bg=self._BACKGROUND, fg=self._TEXT, font=("Trebuchet MS", 9)).pack(side="left")
+        for text, command in (("Open", self._open_history_folder), ("Choose…", self._choose_history_folder)):
+            tk.Button(
+                folder_row,
+                text=text,
+                command=command,
+                bg=self._PANEL,
+                fg=self._TEXT,
+                activebackground=self._PANEL_ACTIVE,
+                activeforeground=self._TEXT,
+                bd=0,
+                padx=10,
+                pady=5,
+                font=("Courier New", 8),
+            ).pack(side="right", padx=(6, 0))
+        self._folder_label = tk.Label(
+            folder_row,
+            text="",
+            bg=self._BACKGROUND,
+            fg=self._MUTED,
+            anchor="w",
             font=("Courier New", 8),
-        ).pack(anchor="w", pady=(6, 0))
+        )
+        self._folder_label.pack(side="left", fill="x", expand=True, padx=(12, 0))
 
         panel = tk.Frame(
             body,
@@ -387,17 +383,17 @@ class LauncherWindow:
             highlightbackground=self._BORDER,
             highlightthickness=1,
             padx=16,
-            pady=10,
+            pady=14,
         )
-        panel.pack(fill="x", pady=(12, 0))
+        panel.pack(fill="x", pady=(16, 0))
         self._stat_labels: dict[str, tk.Label] = {}
         for column, (key, title) in enumerate(
             (("today", "TODAY"), ("week", "LAST 7 DAYS"), ("all_time", "ALL TIME"))
         ):
             panel.grid_columnconfigure(column, weight=1)
             tk.Label(panel, text=title, bg=self._PANEL, fg=self._ACCENT, font=("Courier New", 7, "bold")).grid(row=0, column=column, sticky="w")
-            label = tk.Label(panel, text="", bg=self._PANEL, fg=self._BODY, justify="left", font=("Trebuchet MS", 8))
-            label.grid(row=1, column=column, sticky="nw", pady=(4, 0))
+            label = tk.Label(panel, text="", bg=self._PANEL, fg=self._BODY, justify="left", font=("Trebuchet MS", 9))
+            label.grid(row=1, column=column, sticky="nw", pady=(6, 0))
             self._stat_labels[key] = label
         self._stats_note = tk.Label(
             body,
@@ -405,156 +401,95 @@ class LauncherWindow:
             bg=self._BACKGROUND,
             fg=self._MUTED,
             justify="left",
-            wraplength=560,
+            wraplength=540,
             font=("Trebuchet MS", 8),
         )
-        self._stats_note.pack(anchor="w", pady=(6, 0))
-        self._rendered_destinations: tuple[str, ...] | None = None
+        self._stats_note.pack(anchor="w", pady=(8, 0))
         return page
-
-    def _small_button(self, parent: tk.Widget, text: str, command: Callable[[], None]) -> tk.Button:
-        return tk.Button(
-            parent,
-            text=text,
-            command=command,
-            bg=self._PANEL,
-            fg=self._TEXT,
-            activebackground=self._PANEL_ACTIVE,
-            activeforeground=self._TEXT,
-            bd=0,
-            padx=8,
-            pady=3,
-            font=("Courier New", 8),
-        )
-
-    def _destination_row(self, value: str, title: str, detail: str, missing: bool = False) -> tk.Frame:
-        row = tk.Frame(self._destination_rows, bg=self._BACKGROUND)
-        row.pack(fill="x", pady=1)
-        tk.Radiobutton(
-            row,
-            text=title,
-            value=value,
-            variable=self._destination_var,
-            command=self._choose_destination,
-            bg=self._BACKGROUND,
-            fg=self._TEXT,
-            activebackground=self._BACKGROUND,
-            activeforeground=self._TEXT,
-            selectcolor=self._PANEL_ACTIVE,
-            bd=0,
-            highlightthickness=0,
-            font=("Trebuchet MS", 9),
-        ).pack(side="left")
-        tk.Label(
-            row,
-            text=detail,
-            bg=self._BACKGROUND,
-            fg=theme_for(AppState.ERROR).accent if missing else self._MUTED,
-            anchor="w",
-            font=("Courier New", 8),
-        ).pack(side="left", fill="x", expand=True, padx=(8, 0))
-        return row
-
-    def _render_destinations(self) -> None:
-        settings = self._settings.snapshot()
-        key = (*settings.history_folders, "|", settings.history_folder or "")
-        if key != self._rendered_destinations:
-            self._rendered_destinations = key
-            for child in self._destination_rows.winfo_children():
-                child.destroy()
-            self._destination_row("", "Don't save", "just type where my cursor is")
-            labels = folder_labels(settings.history_folders)
-            for folder in settings.history_folders:
-                missing = not Path(folder).is_dir()
-                detail = self._shorten(folder) + ("  (not found)" if missing else "")
-                row = self._destination_row(folder, labels[folder], detail, missing)
-                self._small_button(row, "Remove", lambda f=folder: self._remove_history_folder(f)).pack(side="right", padx=(4, 0))
-                self._small_button(row, "Open", lambda f=folder: self._open_folder(f)).pack(side="right")
-            needs_scroll = len(settings.history_folders) + 1 > 5
-            if needs_scroll:
-                self._destination_scrollbar.pack(side="right", fill="y")
-            else:
-                self._destination_scrollbar.pack_forget()
-            rows = min(len(settings.history_folders) + 1, 5)
-            self._destination_canvas.configure(height=rows * 30)
-        self._destination_var.set(settings.history_folder or "")
-
-    def _sync_history_controls(self) -> None:
-        settings = self._settings.snapshot()
-        if settings.history_folder:
-            name = folder_labels(settings.history_folders).get(settings.history_folder, "")
-            self._history_card.configure(text=f"Saving to {name}")
-        else:
-            self._history_card.configure(text="Not saving")
-        self._render_destinations()
-
-    @staticmethod
-    def _shorten(path: str, limit: int = 44) -> str:
-        return path if len(path) <= limit else "…" + path[-(limit - 1):]
 
     @staticmethod
     def _format_totals(totals: Totals) -> str:
         if totals.dictations == 0:
             return "No dictations"
+        minutes = totals.seconds / 60
         return (
-            f"{totals.dictations} dictation{'s' if totals.dictations != 1 else ''} · "
+            f"{totals.dictations} dictation{'s' if totals.dictations != 1 else ''}\n"
             f"{totals.words:,} words\n"
-            f"{totals.seconds / 60:.0f} min spoken · ≈ {totals.minutes_saved:.0f} min saved"
+            f"{minutes:.0f} min spoken\n"
+            f"≈ {totals.minutes_saved:.0f} min saved"
         )
+
+    def _history_folder(self) -> Path | None:
+        folder = self._settings.snapshot().history_folder
+        return Path(folder) if folder else None
+
+    def _sync_history_controls(self) -> None:
+        settings = self._settings.snapshot()
+        self._history_var.set(settings.history_enabled)
+        folder = self._history_folder()
+        if folder is None:
+            self._folder_label.configure(text="Not chosen yet", fg=self._MUTED)
+        elif not folder.is_dir():
+            self._folder_label.configure(text=f"{folder} (missing)", fg=theme_for(AppState.ERROR).accent)
+        else:
+            self._folder_label.configure(text=self._shorten(str(folder)), fg=self._BODY)
+        self._history_card.configure(
+            text="Saving to history" if settings.history_enabled else "History is off"
+        )
+
+    @staticmethod
+    def _shorten(path: str, limit: int = 48) -> str:
+        return path if len(path) <= limit else "…" + path[-(limit - 1):]
 
     def refresh_history(self) -> None:
         self._sync_history_controls()
-        folders = [Path(f) for f in self._settings.snapshot().history_folders if Path(f).is_dir()]
-        if not folders:
+        folder = self._history_folder()
+        if folder is None or not folder.is_dir():
             for label in self._stat_labels.values():
                 label.configure(text="—")
-            self._stats_note.configure(text="Add a folder to start keeping a record. Stats appear here.")
+            self._stats_note.configure(text="Choose a folder to start keeping a record.")
             return
-        stats = combine_stats([collect_stats(folder) for folder in folders])
+        stats = collect_stats(folder)
         for key, label in self._stat_labels.items():
             label.configure(text=self._format_totals(getattr(stats, key)))
         self._stats_note.configure(
-            text="Totals across all your folders. Time saved compares speaking with typing at "
-            "40 words per minute. Edits and deletions in the files are reflected here."
+            text="Time saved compares speaking with typing at 40 words per minute. "
+            "Stats come from the files in your folder, so edits and deletions are reflected here."
         )
 
-    def _add_history_folder(self) -> None:
+    def _choose_history_folder(self) -> bool:
         selected = filedialog.askdirectory(
             parent=self._root,
-            title="Choose a folder for dictation history (local, OneDrive, or an external drive)",
+            title="Choose a folder for your dictation history",
             mustexist=True,
         )
         if not selected:
-            return
-        try:
-            self._settings.add_history_folder(selected, activate=True)
-        except ValueError as exc:
-            self._stats_note.configure(text=str(exc), fg=theme_for(AppState.ERROR).accent)
-            return
-        self._stats_note.configure(fg=self._MUTED)
+            return False
+        self._settings.update(history_folder=str(Path(selected)))
+        self._on_settings_changed()
+        self.refresh_history()
+        return True
+
+    def _toggle_history(self) -> None:
+        wanted = self._history_var.get()
+        folder = self._history_folder()
+        if wanted and (folder is None or not folder.is_dir()):
+            if not self._choose_history_folder():
+                self._history_var.set(False)
+                return
+        self._settings.update(history_enabled=wanted)
         self._on_settings_changed()
         self.refresh_history()
 
-    def _choose_destination(self) -> None:
-        value = self._destination_var.get() or None
-        self._settings.set_history_destination(value)
-        self._on_settings_changed()
-        self._sync_history_controls()
-
-    def _remove_history_folder(self, folder: str) -> None:
-        # Only forgets the folder; files on disk are never deleted.
-        self._settings.remove_history_folder(folder)
-        self._on_settings_changed()
-        self.refresh_history()
-
-    @staticmethod
-    def _open_folder(folder: str) -> None:
-        if not Path(folder).is_dir():
+    def _open_history_folder(self) -> None:
+        folder = self._history_folder()
+        if folder is None or not folder.is_dir():
+            self._choose_history_folder()
             return
         if os.name == "nt":
             os.startfile(folder)  # type: ignore[attr-defined]
         else:
-            subprocess.Popen(["xdg-open", folder])
+            subprocess.Popen(["xdg-open", str(folder)])
 
     def _build_speech(self, parent: tk.Widget) -> tk.Frame:
         page = self._page(parent)

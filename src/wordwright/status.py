@@ -7,7 +7,7 @@ from typing import Callable, Any
 from PIL import Image, ImageDraw
 
 from .overlay import RecordingOverlay
-from .settings import SettingsStore, folder_labels, same_folder
+from .settings import SettingsStore
 from .sounds import SoundPlayer
 from .state import AppState
 from .theme import theme_for
@@ -98,8 +98,9 @@ class TrayStatus:
                 pystray.MenuItem(self._menu_status, None, enabled=False),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(
-                    "Save dictations to",
-                    pystray.Menu(self._destination_items),
+                    "Save dictations to history",
+                    self._toggle_history,
+                    checked=self._history_checked,
                 ),
                 pystray.MenuItem(
                     "Show overlay at all times",
@@ -198,54 +199,28 @@ class TrayStatus:
         del item
         return self._settings.snapshot().show_overlay_always
 
-    def _destination_items(self) -> list[Any]:
-        """Tray submenu: pick where dictations go, or don't save at all."""
+    def _history_checked(self, item: Any) -> bool:
+        del item
+        return self._settings.snapshot().history_enabled
 
-        pystray = self._pystray
+    def _toggle_history(self, icon: Any, item: Any) -> None:
+        del icon, item
         current = self._settings.snapshot()
-        labels = folder_labels(current.history_folders)
-        items = [
-            pystray.MenuItem(
-                "Don't save (just type)",
-                lambda icon, item: self._choose_destination(None),
-                checked=lambda item: self._settings.snapshot().history_folder is None,
-                radio=True,
-            )
-        ]
-        for folder in current.history_folders:
-            label = labels[folder]
-            if not Path(folder).is_dir():
-                label += "  (not found)"
-            items.append(
-                pystray.MenuItem(
-                    label,
-                    lambda icon, item, folder=folder: self._choose_destination(folder),
-                    checked=lambda item, folder=folder: self._is_destination(folder),
-                    radio=True,
-                )
-            )
-        items.append(pystray.Menu.SEPARATOR)
-        items.append(pystray.MenuItem("Add or manage folders…", lambda icon, item: self._open_history()))
-        return items
-
-    def _is_destination(self, folder: str) -> bool:
-        active = self._settings.snapshot().history_folder
-        return active is not None and same_folder(active, folder)
-
-    def _choose_destination(self, folder: str | None) -> None:
-        self._settings.set_history_destination(folder)
+        folder_ok = bool(current.history_folder) and Path(current.history_folder).is_dir()
+        if not current.history_enabled and not folder_ok:
+            # A folder has to be chosen first; that happens on the History page.
+            if self._overlay is not None:
+                self._overlay.show_launcher("history")
+            return
+        self._settings.update(history_enabled=not current.history_enabled)
         if self._overlay is not None:
             self._overlay.settings_changed()
         self._icon.update_menu()
-        if folder is None:
-            self.notify("Not saving. Dictations are only typed where your cursor is.")
-        else:
-            name = folder_labels(self._settings.snapshot().history_folders).get(folder, folder)
-            self.notify(f"Saving dictations to {name}.")
-
-    def _open_history(self) -> None:
-        if self._overlay is not None:
-            self._overlay.show_launcher("history")
+        self.notify(
+            "Dictations will be saved to your history."
+            if not current.history_enabled
+            else "History is off. Dictations are typed but not saved."
+        )
 
     def _toggle_overlay_visibility(self, icon: Any, item: Any) -> None:
         del icon, item

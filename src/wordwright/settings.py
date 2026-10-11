@@ -12,7 +12,6 @@ from .hardware import AUTO, MODEL_CHOICES
 from .hotkeys import DEFAULT_HOTKEY, parse_hotkey
 
 MAX_VOCABULARY_TERMS = 200
-MAX_HISTORY_FOLDERS = 20
 MAX_VOCABULARY_TERM_LENGTH = 60
 
 
@@ -21,28 +20,6 @@ def default_settings_path() -> Path:
     if local_app_data:
         return Path(local_app_data) / "Wordwright" / "settings.json"
     return Path.home() / ".wordwright" / "settings.json"
-
-
-def normalize_folder(path: str | Path) -> str:
-    return os.path.normpath(str(path))
-
-
-def same_folder(first: str, second: str) -> bool:
-    return os.path.normcase(normalize_folder(first)) == os.path.normcase(normalize_folder(second))
-
-
-def folder_labels(folders: tuple[str, ...]) -> dict[str, str]:
-    """Short names for the tray and History page: the folder's own name, plus
-    its parent when two saved folders share a name."""
-
-    names = {folder: Path(folder).name or folder for folder in folders}
-    counts: dict[str, int] = {}
-    for name in names.values():
-        counts[name.casefold()] = counts.get(name.casefold(), 0) + 1
-    return {
-        folder: name if counts[name.casefold()] == 1 else f"{name} ({Path(folder).parent})"
-        for folder, name in names.items()
-    }
 
 
 def parse_vocabulary(text: str) -> tuple[str, ...]:
@@ -70,9 +47,9 @@ class UserSettings:
     hotkey: str = DEFAULT_HOTKEY
     model_choice: str = AUTO
     vocabulary: tuple[str, ...] = ()
-    # History: folders the user has added, and the one dictations currently go
-    # to. None means "don't save" (the default); nothing is written to disk.
-    history_folders: tuple[str, ...] = ()
+    # Reserved for the planned running transcript archive. Off until the user
+    # chooses a folder; nothing is written to disk while this is off.
+    history_enabled: bool = False
     history_folder: str | None = None
 
 
@@ -95,71 +72,14 @@ class SettingsStore:
             return replace(self._settings)
 
     def update(self, **changes: Any) -> UserSettings:
-        for key in ("vocabulary", "history_folders"):
-            if key in changes:
-                changes[key] = tuple(changes[key])
+        if "vocabulary" in changes:
+            changes["vocabulary"] = tuple(changes["vocabulary"])
         with self._lock:
             candidate = replace(self._settings, **changes)
             self._validate(candidate)
             self._settings = candidate
             self._save(candidate)
             return replace(candidate)
-
-    def add_history_folder(self, folder: str | Path, activate: bool = True) -> UserSettings:
-        """Remember a folder (once) and, by default, start saving to it."""
-
-        folder = normalize_folder(folder)
-        with self._lock:
-            current = self._settings
-            existing = next((f for f in current.history_folders if same_folder(f, folder)), None)
-            folders = current.history_folders if existing else (*current.history_folders, folder)
-            chosen = existing or folder
-            return self.update(
-                history_folders=folders,
-                history_folder=chosen if activate else current.history_folder,
-            )
-
-    def remove_history_folder(self, folder: str) -> UserSettings:
-        """Forget a folder. Its files are left untouched."""
-
-        with self._lock:
-            current = self._settings
-            folders = tuple(f for f in current.history_folders if not same_folder(f, folder))
-            active = current.history_folder
-            if active is not None and same_folder(active, folder):
-                active = None
-            return self.update(history_folders=folders, history_folder=active)
-
-    def set_history_destination(self, folder: str | None) -> UserSettings:
-        """Choose where dictations go; None stops saving."""
-
-        with self._lock:
-            if folder is None:
-                return self.update(history_folder=None)
-            match = next(
-                (f for f in self._settings.history_folders if same_folder(f, folder)), None
-            )
-            if match is None:
-                raise ValueError("That folder hasn't been added to Wordwright.")
-            return self.update(history_folder=match)
-
-    @staticmethod
-    def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
-        """Settings from 0.2 test builds used one folder plus an on/off flag."""
-
-        if "history_enabled" not in raw:
-            return raw
-        migrated = dict(raw)
-        enabled = bool(migrated.pop("history_enabled"))
-        folder = migrated.get("history_folder")
-        if folder:
-            folders = list(migrated.get("history_folders") or [])
-            if not any(same_folder(f, folder) for f in folders):
-                folders.append(folder)
-            migrated["history_folders"] = folders
-        if not enabled:
-            migrated["history_folder"] = None
-        return migrated
 
     def _load(self) -> UserSettings:
         if not self._path.is_file():
@@ -170,11 +90,8 @@ class SettingsStore:
             return UserSettings()
         if not isinstance(raw, dict):
             return UserSettings()
-        raw = self._migrate(raw)
         known = {
-            key: tuple(value)
-            if key in {"vocabulary", "history_folders"} and isinstance(value, list)
-            else value
+            key: tuple(value) if key == "vocabulary" and isinstance(value, list) else value
             for key, value in raw.items()
             if key in UserSettings.__dataclass_fields__
         }
@@ -187,8 +104,7 @@ class SettingsStore:
         # Fall back to field by field so one bad value never wipes out the
         # rest of the user's preferences.
         settings = UserSettings()
-        # The active folder must come after the folder list it refers to.
-        for key, value in sorted(known.items(), key=lambda item: item[0] == "history_folder"):
+        for key, value in known.items():
             try:
                 candidate = replace(settings, **{key: value})
                 self._validate(candidate)
@@ -221,12 +137,5 @@ class SettingsStore:
                 raise ValueError(
                     f"Vocabulary terms are limited to {MAX_VOCABULARY_TERM_LENGTH} characters."
                 )
-        if len(settings.history_folders) > MAX_HISTORY_FOLDERS:
-            raise ValueError(f"Wordwright can remember up to {MAX_HISTORY_FOLDERS} folders.")
-        for folder in settings.history_folders:
-            if not isinstance(folder, str) or not folder.strip():
-                raise ValueError("History folders must be folder paths.")
-        if settings.history_folder is not None and not any(
-            same_folder(settings.history_folder, f) for f in settings.history_folders
-        ):
-            raise ValueError("Add a folder before saving dictations to it.")
+        if settings.history_enabled and not settings.history_folder:
+            raise ValueError("A local folder is required before history can be enabled.")

@@ -8,10 +8,9 @@ entirely on your PC.
 
 - **Private.** Audio stays in memory and is discarded. Transcripts are never
   logged or sent anywhere, and are saved only if you turn on history.
-- **Optional history.** Off by default. Add folders for different purposes (a
-  project, your meetings) anywhere you like, including OneDrive or an external
-  drive, and pick where each conversation goes from the tray icon. Each folder
-  gets one Markdown file per day, with simple stats on the History page.
+- **Optional history.** Keep a record in a folder you choose, one Markdown file
+  per day, with simple stats on the History page. Switch it on or off any time
+  from the tray icon.
 - **Learns your words.** Add names, products, and jargon on the **Speech** page
   so they're spelled your way.
 - **Fits your PC.** Wordwright picks a speech model for your hardware: the most
@@ -39,8 +38,8 @@ Press `Esc` while recording to cancel without typing anything.
 | Cancel a recording | `Esc` (Wordwright only listens for Esc while recording) |
 | Teach it your words | **Speech** page → one word or phrase per line → **Save words** |
 | Change the speech model | **Speech** page → **Model** (Automatic is the default) |
-| Keep a record of dictations | **History** page → **Add folder…** (it becomes the destination) |
-| Switch folders or stop saving | Tray icon → **Save dictations to** → pick a folder or **Don't save** |
+| Keep a record of dictations | **History** page → **Save my dictations** → choose a folder |
+| Pause or resume saving | Tray icon → **Save dictations to history** |
 | Move or hide the overlay | **Settings** page, or the tray icon menu |
 | Quit completely | **Quit Wordwright** in the app or tray menu (closing the window only hides it) |
 

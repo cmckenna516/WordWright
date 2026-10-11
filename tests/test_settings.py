@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from wordwright.settings import SettingsStore, folder_labels, parse_vocabulary
+from wordwright.settings import SettingsStore, parse_vocabulary
 
 
 class SettingsStoreTests(unittest.TestCase):
@@ -14,8 +14,7 @@ class SettingsStoreTests(unittest.TestCase):
             store = SettingsStore(Path(directory) / "settings.json")
             settings = store.snapshot()
 
-        self.assertIsNone(settings.history_folder)
-        self.assertEqual(settings.history_folders, ())
+        self.assertFalse(settings.history_enabled)
         self.assertEqual(settings.vocabulary, ())
         self.assertEqual(settings.model_choice, "auto")
 
@@ -35,13 +34,11 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(settings.model_choice, "base.en")
         self.assertEqual(settings.vocabulary, ("Trace3", "Glean"))
 
-    def test_saving_requires_an_added_folder(self) -> None:
+    def test_history_requires_an_explicit_folder(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = SettingsStore(Path(directory) / "settings.json")
             with self.assertRaises(ValueError):
-                store.update(history_folder=directory)
-            with self.assertRaises(ValueError):
-                store.set_history_destination(directory)
+                store.update(history_enabled=True)
 
     def test_shortcut_is_validated_and_persisted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -85,56 +82,13 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(settings.model_choice, "auto")
         self.assertEqual(settings.vocabulary, ("Wordwright",))
 
-    def test_multiple_folders_and_switching_destination(self) -> None:
+    def test_history_with_folder_survives_reload(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "settings.json"
-            store = SettingsStore(path)
-            projects = str(Path(directory) / "Project X")
-            meetings = str(Path(directory) / "Meetings")
-            store.add_history_folder(projects)
-            store.add_history_folder(meetings)
-            store.add_history_folder(projects + "/")  # Same folder: not added twice.
-            self.assertEqual(store.snapshot().history_folders, (projects, meetings))
-            self.assertEqual(store.snapshot().history_folder, projects)
+            SettingsStore(path).update(history_folder=directory, history_enabled=True)
+            settings = SettingsStore(path).snapshot()
 
-            store.set_history_destination(meetings)
-            reloaded = SettingsStore(path).snapshot()
-            self.assertEqual(reloaded.history_folder, meetings)
-
-            store.set_history_destination(None)
-            self.assertIsNone(store.snapshot().history_folder)
-            self.assertEqual(len(store.snapshot().history_folders), 2)
-
-    def test_removing_the_active_folder_stops_saving(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            store = SettingsStore(Path(directory) / "settings.json")
-            store.add_history_folder(directory)
-            store.remove_history_folder(directory)
-
-            self.assertIsNone(store.snapshot().history_folder)
-            self.assertEqual(store.snapshot().history_folders, ())
-            self.assertTrue(Path(directory).is_dir())
-
-    def test_test_build_settings_are_migrated(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            for enabled, expected in ((True, directory), (False, None)):
-                path = Path(directory) / f"settings-{enabled}.json"
-                path.write_text(
-                    json.dumps({"history_enabled": enabled, "history_folder": directory}),
-                    encoding="utf-8",
-                )
-                settings = SettingsStore(path).snapshot()
-                self.assertEqual(settings.history_folders, (directory,))
-                self.assertEqual(settings.history_folder, expected)
-
-
-class FolderLabelTests(unittest.TestCase):
-    def test_duplicate_names_show_their_parent(self) -> None:
-        labels = folder_labels(("C:/Work/Notes", "D:/Personal/Notes", "C:/Work/Meetings"))
-
-        self.assertEqual(labels["C:/Work/Meetings"], "Meetings")
-        self.assertIn("Work", labels["C:/Work/Notes"])
-        self.assertNotEqual(labels["C:/Work/Notes"], labels["D:/Personal/Notes"])
+        self.assertTrue(settings.history_enabled)
 
 
 class VocabularyParsingTests(unittest.TestCase):

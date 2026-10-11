@@ -67,10 +67,10 @@ def build_app(
     archive = TranscriptArchive()
 
     def save_transcript(text: str, audio_seconds: float) -> bool:
-        destination = settings.snapshot().history_folder
-        if not destination:
+        current = settings.snapshot()
+        if not (current.history_enabled and current.history_folder):
             return False
-        archive.save(destination, text, audio_seconds)
+        archive.save(current.history_folder, text, audio_seconds)
         return True
 
     controller = AppController(
