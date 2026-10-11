@@ -109,7 +109,6 @@ class LauncherWindow:
             ("dictate", "Dictate", "●"),
             ("speech", "Speech", "✎"),
             ("settings", "Settings", "⚙"),
-            ("history", "History", "▤"),
         ):
             button = tk.Button(
                 sidebar,
@@ -152,13 +151,6 @@ class LauncherWindow:
         self._pages["dictate"] = self._build_dictate(content)
         self._pages["speech"] = self._build_speech(content)
         self._pages["settings"] = self._build_settings(content)
-        self._pages["history"] = self._build_future_page(
-            content,
-            "Optional local archive",
-            "History is off.",
-            "Nothing is saved unless you explicitly choose a local folder and enable history.",
-            "A running archive file of your dictations, kept in a folder you choose.",
-        )
         for page in self._pages.values():
             page.grid(row=0, column=0, sticky="nsew")
 
@@ -287,7 +279,7 @@ class LauncherWindow:
         for index, (label, value) in enumerate(
             (
                 ("SCRIBE", "Choosing a model…"),
-                ("PRIVACY", "History is off"),
+                ("PRIVACY", "Nothing is saved"),
                 ("OVERLAY", "Closed scroll while idle"),
             )
         ):
@@ -308,9 +300,7 @@ class LauncherWindow:
                 font=("Trebuchet MS", 8),
             )
             value_label.pack(anchor="w", pady=(5, 0))
-            if label == "PRIVACY":
-                self._history_card = value_label
-            elif label == "SCRIBE":
+            if label == "SCRIBE":
                 self._model_card = value_label
         return page
 
@@ -332,43 +322,6 @@ class LauncherWindow:
                 highlightbackground="#4b4d46",
                 highlightthickness=1,
             ).pack(side="left")
-
-    def _build_future_page(
-        self,
-        parent: tk.Widget,
-        eyebrow: str,
-        title: str,
-        copy: str,
-        planned: str,
-    ) -> tk.Frame:
-        page = self._page(parent)
-        self._heading(page, eyebrow, title, copy)
-        panel = tk.Frame(
-            page,
-            bg=self._PANEL,
-            highlightbackground=self._BORDER,
-            highlightthickness=1,
-            padx=22,
-            pady=22,
-        )
-        panel.pack(fill="x", pady=(28, 0))
-        tk.Label(
-            panel,
-            text="PLANNED FOR A LATER BUILD",
-            bg=self._PANEL,
-            fg=self._ACCENT,
-            font=("Courier New", 8, "bold"),
-        ).pack(anchor="w")
-        tk.Label(
-            panel,
-            text=planned,
-            bg=self._PANEL,
-            fg=self._MUTED,
-            justify="left",
-            wraplength=500,
-            font=("Trebuchet MS", 9),
-        ).pack(anchor="w", pady=(9, 0))
-        return page
 
     def _build_speech(self, parent: tk.Widget) -> tk.Frame:
         page = self._page(parent)
@@ -743,9 +696,6 @@ class LauncherWindow:
         else:
             label = "Transcribing…" if state == AppState.TRANSCRIBING.value else "Please wait"
             self._record_button.configure(text=label, bg="#313534", fg="#88887f", state="disabled")
-        self._history_card.configure(
-            text="History is on" if self._settings.snapshot().history_enabled else "History is off"
-        )
 
     def is_visible(self) -> bool:
         try:

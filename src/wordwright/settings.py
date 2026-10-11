@@ -47,10 +47,6 @@ class UserSettings:
     hotkey: str = DEFAULT_HOTKEY
     model_choice: str = AUTO
     vocabulary: tuple[str, ...] = ()
-    # Reserved for the planned running transcript archive. Off until the user
-    # chooses a folder; nothing is written to disk while this is off.
-    history_enabled: bool = False
-    history_folder: str | None = None
 
 
 class SettingsStore:
@@ -137,5 +133,3 @@ class SettingsStore:
                 raise ValueError(
                     f"Vocabulary terms are limited to {MAX_VOCABULARY_TERM_LENGTH} characters."
                 )
-        if settings.history_enabled and not settings.history_folder:
-            raise ValueError("A local folder is required before history can be enabled.")

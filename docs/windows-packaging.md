@@ -45,8 +45,7 @@ Outputs:
 
 The installer is per-user and does not require elevation. The speech model,
 settings, and diagnostic logs remain under `%LOCALAPPDATA%\Wordwright`, so an
-application upgrade or uninstall does not silently delete personal settings or
-future opt-in history.
+application upgrade or uninstall does not silently delete personal settings.
 
 ## Release verification
 

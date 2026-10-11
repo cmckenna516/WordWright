@@ -8,7 +8,7 @@ surfaces with different jobs:
 1. A persistent, focus-safe overlay that communicates recording state without
    interrupting the application where the user is typing.
 2. A lightweight dark launcher for status, custom vocabulary, the speech
-   model, settings, and the planned transcript archive.
+   model, and settings.
 
 The product should remain understandable without onboarding or an account. New
 features must not compromise the reliability of the core loop:
@@ -16,7 +16,7 @@ features must not compromise the reliability of the core loop:
 `hotkey -> record -> local transcription -> type at the cursor`
 
 The clipboard is touched only when no text field has focus, so a dictation is
-never lost. That fallback is replaced by the archive once it exists.
+never lost.
 
 ## Originality and provenance
 
@@ -27,8 +27,8 @@ design and implementation must remain independently produced.
   animation frames, interface text, sound effects, or distinctive visual
   composition.
 - Use ordinary platform conventions only as functional references: a system
-  tray menu, a status overlay, a settings screen, navigation, and local history
-  are general interaction patterns.
+  tray menu, a status overlay, a settings screen, and navigation are general
+  interaction patterns.
 - Maintain Wordwright's own name, scroll-and-feather identity, colors,
   dimensions, motion, copy, and information hierarchy.
 - Record the source and license for every third-party asset added to the
@@ -79,22 +79,19 @@ the always-visible idle state.
 - `Quit Wordwright` fully stops the hotkey, microphone, overlay, and tray
   process.
 - The tray menu provides Open, current status, overlay visibility, and Quit.
-- The launcher uses a plain dark interface with Dictate, Speech, Settings, and
-  History.
+- The launcher uses a plain dark interface with Dictate, Speech, and Settings.
 
-The first launcher build intentionally has no dashboard clutter. Home shows
-runtime state, the shortcut, model readiness, microphone, and whether history
-is enabled.
+The launcher intentionally has no dashboard clutter. Dictate shows runtime
+state, the shortcut, and the active model.
 
 ## Privacy and local storage
 
-The transcript archive is strictly opt-in and disabled by default.
-
-- Enabling it requires the user to choose a local folder first.
-- Transcript text is never written to disk while it is disabled.
-- Recorded audio is never retained.
-- The archive is a single running file in the chosen folder that the user can
-  open, edit, move, or delete with ordinary tools.
+- Transcript text is never written to disk or logged.
+- Recorded audio is held in memory only and never retained.
+- Settings, models, and logs (without transcript text) live under
+  `%LOCALAPPDATA%\Wordwright`.
+- Transcript history was prototyped and deliberately dropped to keep the app
+  small and fast. Wordwright types text where the cursor is and nothing more.
 
 ## Feature roadmap
 
@@ -118,7 +115,7 @@ supported product.
 
 ### Next
 
-- Running transcript archive in a folder the user chooses.
+- Keep the core loop fast on every machine before adding anything.
 
 ### Later possibilities, not committed
 

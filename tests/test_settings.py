@@ -9,12 +9,11 @@ from wordwright.settings import SettingsStore, parse_vocabulary
 
 
 class SettingsStoreTests(unittest.TestCase):
-    def test_privacy_sensitive_features_default_to_off(self) -> None:
+    def test_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = SettingsStore(Path(directory) / "settings.json")
             settings = store.snapshot()
 
-        self.assertFalse(settings.history_enabled)
         self.assertEqual(settings.vocabulary, ())
         self.assertEqual(settings.model_choice, "auto")
 
@@ -33,12 +32,6 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(settings.overlay_position, "bottom_center")
         self.assertEqual(settings.model_choice, "base.en")
         self.assertEqual(settings.vocabulary, ("Trace3", "Glean"))
-
-    def test_history_requires_an_explicit_folder(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            store = SettingsStore(Path(directory) / "settings.json")
-            with self.assertRaises(ValueError):
-                store.update(history_enabled=True)
 
     def test_shortcut_is_validated_and_persisted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -81,15 +74,6 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(settings.overlay_position, "bottom_center")
         self.assertEqual(settings.model_choice, "auto")
         self.assertEqual(settings.vocabulary, ("Wordwright",))
-
-    def test_history_with_folder_survives_reload(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "settings.json"
-            SettingsStore(path).update(history_folder=directory, history_enabled=True)
-            settings = SettingsStore(path).snapshot()
-
-        self.assertTrue(settings.history_enabled)
-
 
 class VocabularyParsingTests(unittest.TestCase):
     def test_splits_lines_and_commas_and_drops_duplicates(self) -> None:

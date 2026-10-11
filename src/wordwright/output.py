@@ -285,8 +285,8 @@ def _default_copy_function(text: str) -> None:
 class TextInserter:
     """Type a transcript at the cursor without using the clipboard.
 
-    The clipboard is used only when no text field has focus, so the dictation
-    is not lost. That fallback goes away once the running archive exists.
+    The clipboard is used only when no text field has focus or Windows blocks
+    typing, so a dictation is never lost.
     """
 
     def __init__(
