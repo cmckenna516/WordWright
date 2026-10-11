@@ -62,3 +62,12 @@ jobs:
           if (-not (Test-Path -LiteralPath "dist\Wordwright\Wordwright.exe")) {
             throw "Packaged executable was not created."
           }
+
+      # Lets a pull request be tested by downloading a ready-to-run build,
+      # with no Python or setup scripts. Unzip and run Wordwright.exe.
+      - name: Upload test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wordwright-test-build-${{ github.event.pull_request.number || 'main' }}
+          path: dist/Wordwright
+          retention-days: 14

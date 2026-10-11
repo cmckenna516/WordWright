@@ -41,12 +41,11 @@ Install Inno Setup 6, then run:
 Outputs:
 
 - `dist\Wordwright\Wordwright.exe`: unpacked application build
-- `release\Wordwright-Setup-0.1.0.exe`: installer for testers
+- `release\Wordwright-Setup-0.2.0.exe`: installer for testers
 
 The installer is per-user and does not require elevation. The speech model,
 settings, and diagnostic logs remain under `%LOCALAPPDATA%\Wordwright`, so an
-application upgrade or uninstall does not silently delete personal settings or
-future opt-in history.
+application upgrade or uninstall does not silently delete personal settings.
 
 ## Release verification
 

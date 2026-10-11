@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
 from wordwright.config import AppConfig
 from wordwright.controller import AppController
 from wordwright.output import DeliveryResult
-from wordwright.status import AppState
+from wordwright.state import AppState
 
 
 class FakeStatus:
@@ -45,16 +46,23 @@ class FakeRecorder:
 class FakeTranscriber:
     def __init__(self) -> None:
         self.loaded = False
+        self.loads = 0
+        self.active_label = "small.en · CPU"
+
+    @property
+    def is_loaded(self) -> bool:
+        return self.loaded
 
     def load(self) -> None:
         self.loaded = True
+        self.loads += 1
 
     def transcribe(self, samples) -> str:
         return "Testing one, two, three."
 
 
 class FakeInserter:
-    def __init__(self, result=DeliveryResult.PASTED) -> None:
+    def __init__(self, result=DeliveryResult.TYPED) -> None:
         self.texts = []
         self.result = result
 
@@ -64,9 +72,14 @@ class FakeInserter:
 
 
 class FakeHotkey:
-    def __init__(self) -> None:
+    def __init__(self, registration_error=None) -> None:
         self.started = False
         self.stopped = False
+        self.cancel_states = []
+        self.registration_error = registration_error
+
+    def set_cancel_enabled(self, enabled) -> None:
+        self.cancel_states.append(enabled)
 
     def start(self) -> None:
         self.started = True
@@ -155,6 +168,175 @@ class AppControllerTests(unittest.TestCase):
         self.assertEqual(controller.state, AppState.CLIPBOARD)
         self.assertIn("copied to the clipboard", status.messages[-1])
 
+    def make_controller(self, runner=None, inserter=None):
+        status = FakeStatus()
+        recorder = FakeRecorder()
+        transcriber = FakeTranscriber()
+        clock = iter(float(value) for value in range(1, 100))
+        controller = AppController(
+            config=AppConfig(),
+            recorder=recorder,
+            transcriber=transcriber,
+            inserter=inserter or FakeInserter(),
+            status=status,
+            hotkey=FakeHotkey(),
+            async_runner=runner or ImmediateRunner(),
+            monotonic=lambda: next(clock),
+        )
+        return controller, status, recorder, transcriber
+
+    def test_escape_cancels_recording_without_typing(self) -> None:
+        inserter = FakeInserter()
+        controller, status, recorder, _ = self.make_controller(inserter=inserter)
+        controller.start()
+        controller.handle_hotkey()
+
+        controller.cancel_recording()
+
+        self.assertTrue(recorder.cancelled)
+        self.assertEqual(controller.state, AppState.IDLE)
+        self.assertEqual(inserter.texts, [])
+        self.assertIn("cancelled", status.messages[-1])
+
+    def test_escape_does_nothing_when_not_recording(self) -> None:
+        controller, status, recorder, _ = self.make_controller()
+        controller.start()
+        messages = list(status.messages)
+
+        controller.cancel_recording()
+
+        self.assertFalse(recorder.cancelled)
+        self.assertEqual(controller.state, AppState.IDLE)
+        self.assertEqual(status.messages, messages)
+
+    def test_a_broken_status_display_never_stops_transcription(self) -> None:
+        class BrokenStatus(FakeStatus):
+            def update(self, state) -> None:
+                super().update(state)
+                raise ValueError("tray menu could not be built")
+
+        inserter = FakeInserter()
+        controller = AppController(
+            config=AppConfig(),
+            recorder=FakeRecorder(),
+            transcriber=FakeTranscriber(),
+            inserter=inserter,
+            status=BrokenStatus(),
+            hotkey=FakeHotkey(),
+            async_runner=ImmediateRunner(),
+            monotonic=iter([1.0, 2.0]).__next__,
+        )
+        with self.assertLogs("wordwright.controller", level="ERROR"):
+            controller.start()
+            controller.handle_hotkey()
+            controller.handle_hotkey()
+
+        self.assertEqual(inserter.texts, ["Testing one, two, three."])
+        self.assertEqual(controller.state, AppState.SUCCESS)
+
+    def test_escape_is_claimed_only_while_recording(self) -> None:
+        controller, _, _, _ = self.make_controller()
+        controller.start()
+        hotkey = controller._hotkey
+        hotkey.cancel_states.clear()
+
+        controller.handle_hotkey()
+        self.assertEqual(hotkey.cancel_states, [True])
+        controller.handle_hotkey()
+        self.assertFalse(hotkey.cancel_states[-1])
+
+    def test_ready_message_names_the_configured_shortcut(self) -> None:
+        status = FakeStatus()
+        controller = AppController(
+            config=AppConfig(),
+            recorder=FakeRecorder(),
+            transcriber=FakeTranscriber(),
+            inserter=FakeInserter(),
+            status=status,
+            hotkey=FakeHotkey(),
+            async_runner=ImmediateRunner(),
+            hotkey_label=lambda: "Ctrl+Shift+D",
+        )
+        controller.start()
+        self.assertIn("Press Ctrl+Shift+D", status.messages[-1])
+
+    def test_shortcut_conflict_is_reported_and_app_still_starts(self) -> None:
+        status = FakeStatus()
+        controller = AppController(
+            config=AppConfig(),
+            recorder=FakeRecorder(),
+            transcriber=FakeTranscriber(),
+            inserter=FakeInserter(),
+            status=status,
+            hotkey=FakeHotkey("Ctrl+Alt+Space is already used by another app."),
+            async_runner=ImmediateRunner(),
+        )
+        controller.start()
+
+        self.assertIn("already used", status.messages[0])
+        self.assertEqual(controller.state, AppState.IDLE)
+        self.assertIn("scroll", status.messages[-1])
+
+    def test_model_change_while_idle_reloads_immediately(self) -> None:
+        controller, _, _, transcriber = self.make_controller()
+        controller.start()
+        configured = []
+
+        controller.reload_model(lambda: configured.append("base.en"))
+
+        self.assertEqual(configured, ["base.en"])
+        self.assertEqual(transcriber.loads, 2)
+        self.assertEqual(controller.state, AppState.IDLE)
+
+    def test_model_change_while_recording_waits_until_idle(self) -> None:
+        controller, _, _, transcriber = self.make_controller()
+        controller.start()
+        controller.handle_hotkey()
+        configured = []
+
+        controller.reload_model(lambda: configured.append("base.en"))
+        self.assertEqual(configured, [])
+        self.assertEqual(controller.state, AppState.RECORDING)
+
+        controller.cancel_recording()
+
+        self.assertEqual(configured, ["base.en"])
+        self.assertEqual(transcriber.loads, 2)
+        self.assertEqual(controller.state, AppState.IDLE)
+
+    def test_model_ready_reports_the_active_model(self) -> None:
+        controller, status, _, _ = self.make_controller()
+        labels = []
+        status.set_model_label = labels.append
+
+        controller.start()
+
+        self.assertEqual(labels, ["small.en · CPU"])
+
+    def test_stale_idle_timer_does_not_override_a_newer_state(self) -> None:
+        deferred = []
+
+        def runner(function) -> None:
+            # Hold back the idle timer and the model-reload worker.
+            if getattr(function, "__name__", "") in {"reset", "run"}:
+                deferred.append(function)
+            else:
+                function()
+
+        controller, _, _, _ = self.make_controller(runner=runner)
+        controller.start()
+        controller.handle_hotkey()
+        controller.handle_hotkey()
+        self.assertEqual(controller.state, AppState.SUCCESS)
+
+        # A model switch starts while "text typed" is still showing.
+        controller.reload_model(lambda: None)
+        self.assertEqual(controller.state, AppState.LOADING)
+        reset_timer = deferred[0]
+        with patch("wordwright.controller.time.sleep"):
+            reset_timer()
+
+        self.assertEqual(controller.state, AppState.LOADING)
 
 if __name__ == "__main__":
     unittest.main()

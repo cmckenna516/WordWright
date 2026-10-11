@@ -7,13 +7,16 @@ surfaces with different jobs:
 
 1. A persistent, focus-safe overlay that communicates recording state without
    interrupting the application where the user is typing.
-2. A lightweight dark launcher for status, settings, optional local history,
-   correction tools, mind maps, statistics, and exports.
+2. A lightweight dark launcher for status, custom vocabulary, the speech
+   model, and settings.
 
 The product should remain understandable without onboarding or an account. New
 features must not compromise the reliability of the core loop:
 
-`hotkey -> record -> local transcription -> clipboard -> paste`
+`hotkey -> record -> local transcription -> type at the cursor`
+
+The clipboard is touched only when no text field has focus, so a dictation is
+never lost.
 
 ## Originality and provenance
 
@@ -24,8 +27,8 @@ design and implementation must remain independently produced.
   animation frames, interface text, sound effects, or distinctive visual
   composition.
 - Use ordinary platform conventions only as functional references: a system
-  tray menu, a status overlay, a settings screen, navigation, and local history
-  are general interaction patterns.
+  tray menu, a status overlay, a settings screen, and navigation are general
+  interaction patterns.
 - Maintain Wordwright's own name, scroll-and-feather identity, colors,
   dimensions, motion, copy, and information hierarchy.
 - Record the source and license for every third-party asset added to the
@@ -76,104 +79,49 @@ the always-visible idle state.
 - `Quit Wordwright` fully stops the hotkey, microphone, overlay, and tray
   process.
 - The tray menu provides Open, current status, overlay visibility, and Quit.
-- The launcher uses a plain dark interface with Home, History, and Settings.
+- The launcher uses a plain dark interface with Dictate, Speech, and Settings.
 
-The first launcher build intentionally has no dashboard clutter. Home shows
-runtime state, the shortcut, model readiness, microphone, and whether history
-is enabled.
+The launcher intentionally has no dashboard clutter. Dictate shows runtime
+state, the shortcut, and the active model.
 
 ## Privacy and local storage
 
-History is strictly opt-in and disabled by default.
-
-- Enabling history requires the user to choose a local folder first.
-- Transcript text is never written to disk when history is disabled.
-- Recorded audio is not retained by history.
-- Retention choices are 30, 60, 90 days, or never delete automatically.
-- The user can delete individual records, clear all history, and open the
-  storage folder.
-- Automatic deletion runs locally and should be testable without a network.
-- Optional mind maps and correction learning remain disabled unless local
-  history is enabled, because both require stored text.
-- Every stored record, learned correction, statistic, and mind-map node must be
-  reviewable and deletable.
-
-The planned storage format is one SQLite database in the user-selected folder.
-SQLite keeps search, retention, correction pairs, and statistics transactional
-without requiring a service. Markdown and plain-text exports are generated on
-demand.
+- Transcript text is never written to disk or logged.
+- Recorded audio is held in memory only and never retained.
+- Settings, models, and logs (without transcript text) live under
+  `%LOCALAPPDATA%\Wordwright`.
+- Transcript history was prototyped and deliberately dropped to keep the app
+  small and fast. Wordwright types text where the cursor is and nothing more.
 
 ## Feature roadmap
 
-### Phase 1: dependable utility shell
+Scope is deliberately small: Wordwright is a personal tool shared as is, not a
+supported product.
 
-- Repair the persistent overlay and click-through Win32 behavior.
-- Track the active monitor and respect its work area.
-- Add the Home, History, and Settings launcher shell.
-- Add tray Open, overlay visibility, and Quit actions.
-- Persist privacy-safe settings locally.
-- Add optional asynchronous start and stop WAV hooks.
-- Add rotating local diagnostic logs that never contain transcript bodies.
+### Done
 
-### Phase 2: user controls
+- Persistent, focus-safe overlay that follows the active monitor.
+- Launcher with tray Open, overlay visibility, and Quit.
+- Optional start and stop WAV cues; rotating logs without transcript text.
+- Custom vocabulary that biases recognition toward the user's own names and
+  terms.
+- Automatic speech-model choice for the machine (GPU, capable CPU, ARM64 or
+  lighter CPU), with a manual override.
+- Typing the transcript at the cursor instead of pasting through the clipboard.
+- `Esc` cancels the current recording without transcription or typing.
+- Shortcut registered with Windows so it fires only on the exact combination,
+  and can be changed in Settings.
+- An idle overlay that redraws only when something changes.
 
-- Editable global hotkey.
-- Push-to-talk and hands-free toggle modes.
-- Microphone picker with a local live input meter and test.
-- `Esc` cancels the current recording without transcription or insertion.
+### Next
+
+- Keep the core loop fast on every machine before adding anything.
+
+### Later possibilities, not committed
+
+- Microphone picker.
 - Launch at Windows sign-in.
-- Single-instance packaged executable suitable for pinning to the taskbar.
-
-### Phase 3: opt-in local history
-
-- Folder selection and explicit enable confirmation.
-- Local transcript list, search, copy, edit, delete, and retention.
-- Pinning to exempt selected entries from automatic deletion.
-- Markdown, plain-text, JSON, and CSV exports.
-- Central local statistics view: sessions, words, recording time, and estimated
-  typing time saved.
-
-Statistics derive from local history. If history is off, persistent statistics
-are also off unless a separate aggregate-only option is designed and approved.
-
-### Phase 4: corrections and vocabulary learning
-
-Corrections must be easy, transparent, and reversible.
-
-1. The history editor shows the generated transcript as ordinary editable text.
-2. Saving an edit can optionally record a local original/corrected pair.
-3. The app proposes vocabulary or replacement rules from repeated corrections.
-4. The user reviews and accepts each proposed rule before it affects future
-   output.
-5. Accepted names, jargon, spellings, and replacements appear in a manageable
-   local dictionary.
-6. Rules can be disabled, edited, exported, or deleted.
-
-Do not silently train on full transcript history. Start with explainable local
-dictionary and replacement behavior. More advanced model adaptation requires a
-separate privacy and quality design.
-
-### Phase 5: opt-in local mind maps
-
-Mind maps are generated only from records the user explicitly selects or from a
-user-approved local collection.
-
-- Extract topics, projects, people, and relationships locally where practical.
-- Always preserve links from a node back to its source transcript records.
-- Allow manual rename, merge, connect, disconnect, hide, and delete operations.
-- Never imply that an inferred relationship is a verified fact.
-- Export maps as Markdown outline, JSON, and an image or portable graph format.
-- Deleting a transcript should either remove derived nodes or clearly mark them
-  as detached, according to a user-visible rule.
-
-### Later possibilities
-
-- Per-application preferences.
-- Reusable snippets and text expansion.
 - Additional languages.
-- Optional transcript cleanup modes separate from verbatim transcription.
-- Retry from retained audio only if a future design explicitly changes the
-  current memory-only audio policy.
 
 ## Sound direction
 

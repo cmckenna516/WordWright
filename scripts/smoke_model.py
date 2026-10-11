@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
+from wordwright.hardware import detect_hardware, resolve
 from wordwright.transcription import LocalTranscriber
 
 
@@ -36,13 +37,23 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", type=Path, required=True)
     parser.add_argument("--audio", type=Path)
+    parser.add_argument(
+        "--model",
+        default="auto",
+        help="auto, large-v3-turbo, small.en, or base.en (compare models on this PC)",
+    )
     args = parser.parse_args()
 
+    profile = detect_hardware()
+    plan = resolve(args.model, profile)
+    print(f"Model: {plan.label} ({plan.reason})")
     transcriber = LocalTranscriber(
-        model_name="small.en",
-        device="cpu",
-        compute_type="int8",
+        model_name=plan.model,
+        device=plan.device,
+        compute_type=plan.compute_type,
         download_root=args.model_dir,
+        cpu_threads=profile.cpu_threads,
+        beam_size=plan.beam_size,
     )
     started = time.perf_counter()
     transcriber.load()

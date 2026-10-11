@@ -9,7 +9,8 @@ under its own license, and its copyright belongs to its authors.
 
 | Component | License | Notes |
 | --- | --- | --- |
-| Whisper `small.en` model weights (OpenAI), CTranslate2 conversion `Systran/faster-whisper-small.en` | MIT | Downloaded from Hugging Face on first launch; not stored in this repository |
+| Whisper `base.en` and `small.en` model weights (OpenAI), CTranslate2 conversions `Systran/faster-whisper-base.en` and `Systran/faster-whisper-small.en` | MIT | Downloaded from Hugging Face on first launch; not stored in this repository |
+| Whisper `large-v3-turbo` model weights (OpenAI), CTranslate2 conversion `mobiuslabsgmbh/faster-whisper-large-v3-turbo` | MIT | Downloaded only on PCs with a usable NVIDIA GPU, or when chosen in Settings |
 
 ## Direct dependencies
 
@@ -22,7 +23,7 @@ under its own license, and its copyright belongs to its authors.
 | NumPy | BSD-3-Clause | https://numpy.org |
 | Pillow | MIT-CMU (HPND) | https://python-pillow.org |
 | pynput | LGPL-3.0 | https://github.com/moses-palmer/pynput |
-| pyperclip | BSD-3-Clause | https://github.com/asweigart/pyperclip |
+| pyperclip (clipboard fallback only) | BSD-3-Clause | https://github.com/asweigart/pyperclip |
 | pystray | LGPL-3.0 | https://github.com/moses-palmer/pystray |
 | sounddevice | MIT | https://github.com/spatialaudio/python-sounddevice |
 

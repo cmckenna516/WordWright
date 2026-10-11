@@ -22,7 +22,7 @@ def main() -> int:
         time.sleep(2.0)
         overlay.update("Transcribing")
         time.sleep(2.0)
-        overlay.update("Paste sent")
+        overlay.update("Text typed")
         time.sleep(1.0)
         overlay.stop()
 

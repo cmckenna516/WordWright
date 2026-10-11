@@ -9,8 +9,11 @@ from ctypes import wintypes
 from pathlib import Path
 from typing import Any, Callable
 
+from .hotkeys import hotkey_label
 from .settings import SettingsStore
 from .sounds import SoundPlayer
+from .state import AppState
+from .theme import theme_for
 
 
 LOGGER = logging.getLogger(__name__)
@@ -39,15 +42,9 @@ class RecordingOverlay:
 
     _WIDTH = 456
     _HEIGHT = 76
-    _STATUS = {
-        "Loading model": ("LOADING MODEL", "#352b16", "#9f7837", "#e1b75e"),
-        "Idle": ("READY", "#181a19", "#705d36", "#a9c596"),
-        "Recording": ("RECORDING", "#3b1715", "#b45348", "#f08b7e"),
-        "Transcribing": ("TRANSCRIBING", "#14263a", "#477eae", "#78b8e9"),
-        "Paste sent": ("PASTE SENT", "#18301f", "#4a8c5b", "#79c78b"),
-        "Copied to clipboard": ("COPIED TO CLIPBOARD", "#352b16", "#9f7837", "#e1b75e"),
-        "Error": ("ERROR", "#351634", "#954a91", "#d98bd9"),
-    }
+    _ACTIVE_TICK_MS = 125
+    _IDLE_TICK_MS = 250
+    _ANIMATED_STATES = {AppState.RECORDING.value, AppState.TRANSCRIBING.value}
 
     def __init__(
         self,
@@ -56,6 +53,9 @@ class RecordingOverlay:
         sounds: SoundPlayer | None = None,
         on_toggle: Callable[[], None] | None = None,
         on_quit: Callable[[], None] | None = None,
+        on_model_changed: Callable[[], None] | None = None,
+        model_explainer: Callable[[], str] | None = None,
+        hotkey_changer: Callable[[str], str | None] | None = None,
         canvas_width: int = _WIDTH,
         canvas_height: int = _HEIGHT,
     ) -> None:
@@ -64,6 +64,9 @@ class RecordingOverlay:
         self._sounds = sounds or SoundPlayer(self._settings)
         self._on_toggle = on_toggle or (lambda: None)
         self._on_quit = on_quit or (lambda: None)
+        self._on_model_changed = on_model_changed or (lambda: None)
+        self._model_explainer = model_explainer or (lambda: "")
+        self._hotkey_changer = hotkey_changer or (lambda spec: None)
         self._canvas_width = canvas_width
         self._canvas_height = canvas_height
         self._updates: queue.Queue[tuple[str, Any]] = queue.Queue()
@@ -86,6 +89,9 @@ class RecordingOverlay:
 
     def settings_changed(self) -> None:
         self._updates.put(("settings_changed", None))
+
+    def set_model_label(self, label: str) -> None:
+        self._updates.put(("model_label", label))
 
     def stop(self) -> None:
         self._updates.put(("stop", None))
@@ -110,6 +116,9 @@ class RecordingOverlay:
             on_toggle=lambda: self._on_toggle(),
             on_quit=lambda: self._on_quit(),
             on_settings_changed=self.settings_changed,
+            on_model_changed=lambda: self._on_model_changed(),
+            model_explainer=lambda: self._model_explainer(),
+            hotkey_changer=lambda spec: self._hotkey_changer(spec),
         )
 
         window = tk.Toplevel(root)
@@ -136,7 +145,7 @@ class RecordingOverlay:
         window.update_idletasks()
         wrapper_handle = self._make_focus_safe(window.winfo_id())
 
-        state = "Loading model"
+        state = AppState.LOADING.value
         launcher.update_state(state)
         stopped = False
         visible = False
@@ -144,17 +153,27 @@ class RecordingOverlay:
         menu_expires_at = 0.0
         animation_frame = 0
         last_position: tuple[int, int, str] | None = None
+        last_render: tuple[Any, ...] | None = None
 
         def launcher_visible() -> bool:
             return launcher.is_visible()
 
         def expanded() -> bool:
-            return state != "Idle" or menu_open or launcher_visible()
+            return state != AppState.IDLE.value or menu_open or launcher_visible()
+
+        def animating() -> bool:
+            return state in self._ANIMATED_STATES
+
+        def render_key() -> tuple[Any, ...]:
+            # Everything the drawing depends on. The canvas is redrawn only when
+            # this changes, so an idle overlay costs almost nothing.
+            phase = (animation_frame // 4) % 2 if animating() else 0
+            return (state, menu_open, expanded(), phase, self._settings.snapshot().hotkey)
 
         def apply_visibility() -> None:
             nonlocal visible
             settings = self._settings.snapshot()
-            should_show = settings.show_overlay_always or state != "Idle"
+            should_show = settings.show_overlay_always or state != AppState.IDLE.value
             if should_show and not visible:
                 window.deiconify()
                 window.lift()
@@ -256,7 +275,7 @@ class RecordingOverlay:
                 width=1,
             )
             draw_rolls(left, top, right, bottom)
-            draw_quill(51, 38, state in {"Recording", "Transcribing"})
+            draw_quill(51, 38, animating())
             canvas.create_text(
                 83,
                 29,
@@ -273,10 +292,12 @@ class RecordingOverlay:
                 font=("Courier New", 9, "bold"),
                 anchor="w",
             )
+            shortcut = hotkey_label(self._settings.snapshot().hotkey).upper().replace("+", " · ")
+            hint = "ESC TO CANCEL" if state == AppState.RECORDING.value else shortcut
             canvas.create_text(
                 right - 17,
                 38,
-                text="CTRL · ALT · SPACE",
+                text=hint,
                 fill="#7f8079",
                 font=("Courier New", 7),
                 anchor="e",
@@ -304,6 +325,8 @@ class RecordingOverlay:
             canvas.create_text(372, 38, text="OPEN APP", fill="#cbc5b5", font=("Courier New", 7), tags="open")
 
         def redraw() -> None:
+            nonlocal last_render
+            last_render = render_key()
             canvas.delete("all")
             if menu_open:
                 draw_menu()
@@ -314,7 +337,7 @@ class RecordingOverlay:
 
         def click(event: Any) -> None:
             nonlocal menu_open, menu_expires_at
-            if state != "Idle":
+            if state != AppState.IDLE.value:
                 return
             if not menu_open:
                 menu_open = True
@@ -365,9 +388,11 @@ class RecordingOverlay:
                     break
                 if action == "state":
                     state = str(payload)
-                    if state != "Idle":
+                    if state != AppState.IDLE.value:
                         menu_open = False
                     launcher.update_state(state)
+                elif action == "model_label":
+                    launcher.set_model_label(str(payload))
                 elif action == "show_launcher":
                     menu_open = False
                     launcher.show()
@@ -385,14 +410,16 @@ class RecordingOverlay:
             if menu_open and time.monotonic() >= menu_expires_at:
                 menu_open = False
 
-            redraw()
+            if render_key() != last_render:
+                redraw()
             apply_visibility()
             if animation_frame % 4 == 0 or settings_were_changed:
                 place_overlay(force=settings_were_changed)
                 if visible and os.name == "nt":
                     self._keep_topmost(wrapper_handle)
             animation_frame += 1
-            root.after(125, tick)
+            busy = animating() or menu_open or state != AppState.IDLE.value
+            root.after(self._ACTIVE_TICK_MS if busy else self._IDLE_TICK_MS, tick)
 
         place_overlay(force=True)
         apply_visibility()
@@ -401,9 +428,10 @@ class RecordingOverlay:
         if mouse_listener is not None:
             mouse_listener.stop()
 
-    @classmethod
-    def _display_for_state(cls, state: str) -> tuple[str, str, str, str]:
-        return cls._STATUS.get(state, cls._STATUS["Idle"])
+    @staticmethod
+    def _display_for_state(state: str) -> tuple[str, str, str, str]:
+        theme = theme_for(state)
+        return theme.overlay_label, theme.overlay_fill, theme.overlay_border, theme.accent
 
     @staticmethod
     def _menu_action_at(x: int, y: int) -> str | None:

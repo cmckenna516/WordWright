@@ -8,7 +8,8 @@ from pathlib import Path
 import pyperclip
 
 from wordwright.audio import AudioRecorder, list_microphones
-from wordwright.hotkeys import GlobalHotkey
+from wordwright.hardware import detect_hardware, recommend
+from wordwright.hotkeys import create_hotkeys
 from wordwright.transcription import LocalTranscriber
 
 
@@ -42,11 +43,23 @@ def verify_microphone() -> None:
 def verify_model(model_directory: Path, audio_path: Path) -> None:
     if not audio_path.is_file():
         raise RuntimeError(f"Verification audio is missing: {audio_path}")
+    # Download and test the model the app will choose on this machine.
+    profile = detect_hardware()
+    plan = recommend(profile)
+    print(f"Speech model for this PC: {plan.label} ({plan.reason})")
+    fallback = (
+        (plan.fallback.model, plan.fallback.compute_type, plan.fallback.beam_size)
+        if plan.fallback
+        else None
+    )
     transcriber = LocalTranscriber(
-        model_name="small.en",
-        device="cpu",
-        compute_type="int8",
+        model_name=plan.model,
+        device=plan.device,
+        compute_type=plan.compute_type,
         download_root=model_directory,
+        cpu_fallback=fallback,
+        cpu_threads=profile.cpu_threads,
+        beam_size=plan.beam_size,
     )
     transcriber.load()
     transcript = transcriber.transcribe(audio_path)
@@ -56,6 +69,8 @@ def verify_model(model_directory: Path, audio_path: Path) -> None:
 
 
 def verify_clipboard() -> None:
+    # The clipboard is only a fallback now (no text field focused), but it
+    # still has to work so a dictation is never lost.
     def retry(operation, attempts: int = 20):
         last_error = None
         for attempt in range(attempts):
@@ -79,13 +94,15 @@ def verify_clipboard() -> None:
 
 
 def verify_hotkey_hook() -> None:
-    hotkey = GlobalHotkey("<ctrl>+<alt>+<shift>+<f12>", lambda: None)
-    hotkey.start()
+    # Register and release an unlikely shortcut to prove the hotkey system
+    # works. The user's own shortcut is checked when the app starts.
+    hotkeys = create_hotkeys("ctrl+alt+shift+f12", lambda: None, lambda: None)
+    hotkeys.start()
     try:
-        hotkey.wait_until_ready()
+        hotkeys.wait_until_ready()
     finally:
-        hotkey.stop()
-        hotkey.join(timeout=1.0)
+        hotkeys.stop()
+        hotkeys.join(timeout=1.0)
     print("Global hotkey check passed.")
 
 

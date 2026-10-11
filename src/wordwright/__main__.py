@@ -15,9 +15,13 @@ from .single_instance import SingleInstance, show_already_running_message
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Local Windows dictation")
-    parser.add_argument("--model", default="small.en", help="Local Whisper model")
-    parser.add_argument("--device", default="cpu", choices=("cpu", "cuda"))
-    parser.add_argument("--compute-type", default="int8")
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Override the speech model (default: the Settings choice, Automatic unless changed)",
+    )
+    parser.add_argument("--device", default=None, choices=("cpu", "cuda"))
+    parser.add_argument("--compute-type", default=None)
     parser.add_argument("--microphone", type=int, default=None)
     parser.add_argument("--model-dir", type=Path, default=None)
     parser.add_argument("--list-microphones", action="store_true")
