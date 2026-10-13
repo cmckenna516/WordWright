@@ -16,6 +16,8 @@ class SettingsStoreTests(unittest.TestCase):
 
         self.assertEqual(settings.vocabulary, ())
         self.assertEqual(settings.model_choice, "auto")
+        self.assertEqual(settings.hotkey, "ctrl+shift+space")
+        self.assertEqual(settings.hold_hotkey, "ctrl+alt")
 
     def test_updates_are_persisted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -37,11 +39,35 @@ class SettingsStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "settings.json"
             store = SettingsStore(path)
-            self.assertEqual(store.snapshot().hotkey, "ctrl+alt+space")
+            self.assertEqual(store.snapshot().hotkey, "ctrl+shift+space")
             with self.assertRaises(ValueError):
                 store.update(hotkey="space")
             store.update(hotkey="ctrl+shift+d")
             self.assertEqual(SettingsStore(path).snapshot().hotkey, "ctrl+shift+d")
+
+    def test_hold_shortcut_is_validated_and_persisted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            store = SettingsStore(path)
+            with self.assertRaises(ValueError):
+                store.update(hold_hotkey="alt")
+            store.update(hold_hotkey="win+alt")
+            self.assertEqual(SettingsStore(path).snapshot().hold_hotkey, "win+alt")
+
+    def test_overlapping_shortcuts_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = SettingsStore(Path(directory) / "settings.json")
+            with self.assertRaisesRegex(ValueError, "overlaps"):
+                store.update(hotkey="ctrl+alt+space")
+
+    def test_legacy_default_is_migrated_away_from_new_hold_chord(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            path.write_text(json.dumps({"hotkey": "ctrl+alt+space"}), encoding="utf-8")
+            settings = SettingsStore(path).snapshot()
+
+        self.assertEqual(settings.hotkey, "ctrl+shift+space")
+        self.assertEqual(settings.hold_hotkey, "ctrl+alt")
 
     def test_rejects_unknown_model(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

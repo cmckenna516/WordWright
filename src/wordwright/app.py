@@ -6,7 +6,13 @@ from .audio import AudioRecorder
 from .config import AppConfig
 from .controller import AppController
 from .hardware import HardwareProfile, ModelPlan, detect_hardware, resolve
-from .hotkeys import create_hotkeys, hotkey_label, parse_hotkey
+from .hotkeys import (
+    create_hotkeys,
+    hold_hotkey_label,
+    hotkey_label,
+    parse_hold_hotkey,
+    parse_hotkey,
+)
 from .state import AppState
 from .output import TextInserter
 from .settings import SettingsStore
@@ -69,11 +75,17 @@ def build_app(
         transcriber=transcriber,
         inserter=inserter,
         status=status,
-        hotkey_label=lambda: hotkey_label(settings.snapshot().hotkey),
+        hotkey_label=lambda: (
+            f"{hotkey_label(settings.snapshot().hotkey)} to toggle, or hold "
+            f"{hold_hotkey_label(settings.snapshot().hold_hotkey)}"
+        ),
     )
     hotkey = create_hotkeys(
-        settings.snapshot().hotkey,
+        toggle_spec=settings.snapshot().hotkey,
+        hold_spec=settings.snapshot().hold_hotkey,
         on_toggle=controller.handle_hotkey,
+        on_hold_start=controller.handle_hold_start,
+        on_hold_stop=controller.handle_hold_stop,
         on_cancel=controller.cancel_recording,
     )
     controller.attach_hotkey(hotkey)
@@ -93,6 +105,21 @@ def build_app(
         settings.update(hotkey=new.spec)
         return None
 
+    def change_hold_hotkey(spec: str) -> str | None:
+        """Apply a new press-and-hold shortcut from Settings."""
+
+        try:
+            new = parse_hold_hotkey(spec)
+        except ValueError as exc:
+            return str(exc)
+        if controller.state in {AppState.RECORDING, AppState.TRANSCRIBING}:
+            return "Finish the current dictation before changing the shortcut."
+        error = hotkey.set_hold_hotkey(new.spec)
+        if error:
+            return error
+        settings.update(hold_hotkey=new.spec)
+        return None
+
     def apply_model_setting() -> None:
         new_plan = resolve(settings.snapshot().model_choice, profile)
         LOGGER.info("Switching speech model: %s (%s)", new_plan.label, new_plan.reason)
@@ -110,6 +137,7 @@ def build_app(
     status.set_toggle_callback(controller.handle_hotkey)
     status.set_model_change_callback(apply_model_setting)
     status.set_hotkey_changer(change_hotkey)
+    status.set_hold_hotkey_changer(change_hold_hotkey)
     status.set_model_explainer(
         lambda: _describe_choice(settings.snapshot().model_choice, profile)
     )

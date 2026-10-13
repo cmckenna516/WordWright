@@ -77,6 +77,7 @@ class TrayStatus:
         self._model_change_callback: Callable[[], None] | None = None
         self._model_explainer: Callable[[], str] = lambda: ""
         self._hotkey_changer: Callable[[str], str | None] = lambda spec: None
+        self._hold_hotkey_changer: Callable[[str], str | None] = lambda spec: None
         self._logo = load_logo()
         self._overlay = (
             RecordingOverlay(
@@ -88,6 +89,7 @@ class TrayStatus:
                 on_model_changed=self._model_changed,
                 model_explainer=lambda: self._model_explainer(),
                 hotkey_changer=lambda spec: self._hotkey_changer(spec),
+                hold_hotkey_changer=lambda spec: self._hold_hotkey_changer(spec),
             )
             if self._logo is not None
             else None
@@ -124,6 +126,9 @@ class TrayStatus:
 
     def set_hotkey_changer(self, changer: Callable[[str], str | None]) -> None:
         self._hotkey_changer = changer
+
+    def set_hold_hotkey_changer(self, changer: Callable[[str], str | None]) -> None:
+        self._hold_hotkey_changer = changer
 
     def set_model_label(self, label: str) -> None:
         if self._overlay is not None:

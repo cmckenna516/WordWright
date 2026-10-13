@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from .hardware import AUTO, MODEL_CHOICES
-from .hotkeys import DEFAULT_HOTKEY, parse_hotkey
+from .hotkeys import (
+    DEFAULT_HOLD_HOTKEY,
+    DEFAULT_TOGGLE_HOTKEY,
+    parse_hold_hotkey,
+    parse_hotkey,
+    shortcut_conflict,
+)
 
 MAX_VOCABULARY_TERMS = 200
 MAX_VOCABULARY_TERM_LENGTH = 60
@@ -44,7 +50,8 @@ class UserSettings:
     sounds_enabled: bool = False
     start_sound_path: str | None = None
     stop_sound_path: str | None = None
-    hotkey: str = DEFAULT_HOTKEY
+    hotkey: str = DEFAULT_TOGGLE_HOTKEY
+    hold_hotkey: str = DEFAULT_HOLD_HOTKEY
     model_choice: str = AUTO
     vocabulary: tuple[str, ...] = ()
 
@@ -91,6 +98,18 @@ class SettingsStore:
             for key, value in raw.items()
             if key in UserSettings.__dataclass_fields__
         }
+        # Settings written before hold-to-dictate had no second shortcut. If
+        # the old toggle includes the new Ctrl+Alt hold chord, move only that
+        # legacy default to the new non-overlapping toggle default.
+        if "hold_hotkey" not in raw:
+            known["hold_hotkey"] = DEFAULT_HOLD_HOTKEY
+            try:
+                toggle = parse_hotkey(known.get("hotkey", DEFAULT_TOGGLE_HOTKEY))
+                hold = parse_hold_hotkey(DEFAULT_HOLD_HOTKEY)
+                if shortcut_conflict(toggle, hold):
+                    known["hotkey"] = DEFAULT_TOGGLE_HOTKEY
+            except ValueError:
+                pass
         try:
             settings = UserSettings(**known)
             self._validate(settings)
@@ -121,7 +140,11 @@ class SettingsStore:
     def _validate(self, settings: UserSettings) -> None:
         if settings.overlay_position not in self._POSITIONS:
             raise ValueError(f"Unsupported overlay position: {settings.overlay_position}")
-        parse_hotkey(settings.hotkey)
+        toggle = parse_hotkey(settings.hotkey)
+        hold = parse_hold_hotkey(settings.hold_hotkey)
+        conflict = shortcut_conflict(toggle, hold)
+        if conflict:
+            raise ValueError(conflict)
         if settings.model_choice not in MODEL_CHOICES:
             raise ValueError(f"Unsupported speech model: {settings.model_choice}")
         if len(settings.vocabulary) > MAX_VOCABULARY_TERMS:

@@ -198,6 +198,41 @@ class AppControllerTests(unittest.TestCase):
         self.assertEqual(inserter.texts, [])
         self.assertIn("cancelled", status.messages[-1])
 
+    def test_hold_starts_on_press_and_transcribes_on_release(self) -> None:
+        inserter = FakeInserter()
+        controller, _, recorder, _ = self.make_controller(inserter=inserter)
+        controller.start()
+
+        controller.handle_hold_start()
+        self.assertTrue(recorder.started)
+        self.assertEqual(controller.state, AppState.RECORDING)
+
+        controller.handle_hold_stop()
+        self.assertEqual(inserter.texts, ["Testing one, two, three."])
+        self.assertEqual(controller.state, AppState.SUCCESS)
+
+    def test_hold_release_does_not_stop_a_toggle_recording(self) -> None:
+        controller, _, recorder, _ = self.make_controller()
+        controller.start()
+        controller.handle_hotkey()
+
+        controller.handle_hold_stop()
+
+        self.assertTrue(recorder.started)
+        self.assertEqual(controller.state, AppState.RECORDING)
+
+    def test_escape_clears_hold_so_later_release_is_ignored(self) -> None:
+        inserter = FakeInserter()
+        controller, _, _, _ = self.make_controller(inserter=inserter)
+        controller.start()
+        controller.handle_hold_start()
+        controller.cancel_recording()
+
+        controller.handle_hold_stop()
+
+        self.assertEqual(inserter.texts, [])
+        self.assertEqual(controller.state, AppState.IDLE)
+
     def test_escape_does_nothing_when_not_recording(self) -> None:
         controller, status, recorder, _ = self.make_controller()
         controller.start()

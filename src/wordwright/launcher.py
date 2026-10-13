@@ -9,7 +9,14 @@ from typing import Callable
 
 from . import __version__
 from .hardware import MODEL_LABELS
-from .hotkeys import KEY_CHOICES, MODIFIER_CHOICES, hotkey_label, parse_hotkey
+from .hotkeys import (
+    KEY_CHOICES,
+    MODIFIER_CHOICES,
+    hold_hotkey_label,
+    hotkey_label,
+    parse_hold_hotkey,
+    parse_hotkey,
+)
 from .settings import SettingsStore, parse_vocabulary
 from .sounds import SoundPlayer
 from .state import AppState
@@ -41,9 +48,11 @@ class LauncherWindow:
         on_model_changed: Callable[[], None] | None = None,
         model_explainer: Callable[[], str] | None = None,
         hotkey_changer: Callable[[str], str | None] | None = None,
+        hold_hotkey_changer: Callable[[str], str | None] | None = None,
     ) -> None:
         self._root = root
         self._hotkey_changer = hotkey_changer or (lambda spec: None)
+        self._hold_hotkey_changer = hold_hotkey_changer or (lambda spec: None)
         self._settings = settings
         self._sounds = sounds
         self._on_toggle = on_toggle
@@ -60,8 +69,8 @@ class LauncherWindow:
 
     def _configure_root(self) -> None:
         self._root.title("Wordwright")
-        self._root.geometry("850x600")
-        self._root.minsize(760, 580)
+        self._root.geometry("850x700")
+        self._root.minsize(760, 680)
         self._root.configure(bg=self._BACKGROUND)
         self._root.protocol("WM_DELETE_WINDOW", self.hide)
         self._root.after(0, self._apply_dark_titlebar)
@@ -220,7 +229,8 @@ class LauncherWindow:
             page,
             "Local dictation utility",
             "Ready at your command.",
-            "Press your shortcut, speak naturally, and Wordwright types the finished text where you left your cursor.",
+            "Tap your toggle shortcut for hands-free dictation, or hold your push-to-talk shortcut. "
+            "Wordwright types the finished text where you left your cursor.",
         )
         status_panel = tk.Frame(
             page,
@@ -307,7 +317,14 @@ class LauncherWindow:
     def _render_keycaps(self) -> None:
         for child in self._keycaps.winfo_children():
             child.destroy()
-        parts = hotkey_label(self._settings.snapshot().hotkey).split("+")
+        tk.Label(
+            self._keycaps,
+            text="HOLD",
+            bg=self._PANEL,
+            fg=self._MUTED,
+            font=("Courier New", 7, "bold"),
+        ).pack(side="left", padx=(0, 6))
+        parts = hold_hotkey_label(self._settings.snapshot().hold_hotkey).split("+")
         for index, key in enumerate(parts):
             if index:
                 tk.Label(self._keycaps, text="+", bg=self._PANEL, fg=self._MUTED, font=("Courier New", 8)).pack(side="left", padx=3)
@@ -422,7 +439,7 @@ class LauncherWindow:
         self._on_model_changed()
 
     def _build_settings(self, parent: tk.Widget) -> tk.Frame:
-        page = self._page(parent)
+        page = tk.Frame(parent, bg=self._BACKGROUND, padx=42, pady=24)
         self._heading(page, "Preferences", "Settings", "Keep the utility quiet, local, and easy to understand.")
         settings = self._settings.snapshot()
         self._overlay_var = tk.BooleanVar(value=settings.show_overlay_always)
@@ -430,8 +447,9 @@ class LauncherWindow:
         self._position_var = tk.StringVar(value=settings.overlay_position)
         body = tk.Frame(page, bg=self._BACKGROUND)
         body.pack(fill="both", expand=True, pady=(18, 0))
-        self._section_label(body, "SHORTCUT")
+        self._section_label(body, "SHORTCUTS")
         self._shortcut_row(body)
+        self._hold_shortcut_row(body)
         self._section_label(body, "OVERLAY", top=17)
         self._check_row(
             body,
@@ -485,7 +503,7 @@ class LauncherWindow:
 
         row = tk.Frame(parent, bg=self._BACKGROUND)
         row.pack(fill="x", pady=4)
-        tk.Label(row, text="Start and stop dictation", bg=self._BACKGROUND, fg=self._TEXT, font=("Trebuchet MS", 9)).pack(side="left")
+        tk.Label(row, text="Toggle dictation", bg=self._BACKGROUND, fg=self._TEXT, font=("Trebuchet MS", 9)).pack(side="left")
         tk.Button(
             row,
             text="Apply",
@@ -531,7 +549,7 @@ class LauncherWindow:
 
     def _shortcut_summary(self) -> str:
         return (
-            f"Fires only when {hotkey_label(self._settings.snapshot().hotkey)} is pressed together. "
+            f"Press {hotkey_label(self._settings.snapshot().hotkey)} once to start and again to stop. "
             "Esc cancels while recording."
         )
 
@@ -544,6 +562,104 @@ class LauncherWindow:
             self._shortcut_status.configure(text=error, fg=theme_for(AppState.ERROR).accent)
             return
         self._shortcut_status.configure(text=self._shortcut_summary(), fg=self._MUTED)
+        self._render_keycaps()
+        self._on_settings_changed()
+
+    def _hold_shortcut_row(self, parent: tk.Widget) -> None:
+        current = parse_hold_hotkey(self._settings.snapshot().hold_hotkey)
+        modifier_options = dict(MODIFIER_CHOICES)
+        current_mods = next(
+            (label for label, mods in modifier_options.items() if mods == current.modifiers),
+            None,
+        )
+        if current_mods is None:
+            current_mods = " + ".join(m.title() for m in current.modifiers)
+            modifier_options[current_mods] = current.modifiers
+        self._hold_modifier_options = modifier_options
+        self._hold_key_options: dict[str, str | None] = {
+            "Modifiers only": None,
+            **{self._key_display(key): key for key in KEY_CHOICES},
+        }
+        self._hold_modifier_var = tk.StringVar(value=current_mods)
+        self._hold_key_var = tk.StringVar(
+            value="Modifiers only" if current.key is None else self._key_display(current.key)
+        )
+
+        row = tk.Frame(parent, bg=self._BACKGROUND)
+        row.pack(fill="x", pady=(10, 4))
+        tk.Label(
+            row,
+            text="Hold to dictate",
+            bg=self._BACKGROUND,
+            fg=self._TEXT,
+            font=("Trebuchet MS", 9),
+        ).pack(side="left")
+        tk.Button(
+            row,
+            text="Apply",
+            command=self._apply_hold_shortcut,
+            bg=self._ACCENT,
+            fg="#1b160b",
+            activebackground="#e2bc66",
+            activeforeground="#1b160b",
+            bd=0,
+            padx=12,
+            pady=4,
+            font=("Trebuchet MS", 8, "bold"),
+        ).pack(side="right", padx=(8, 0))
+        for variable, options, width in (
+            (self._hold_key_var, self._hold_key_options, 14),
+            (self._hold_modifier_var, self._hold_modifier_options, 16),
+        ):
+            menu = tk.OptionMenu(row, variable, *options)
+            menu.configure(
+                width=width,
+                bg=self._PANEL,
+                fg=self._TEXT,
+                activebackground=self._PANEL_ACTIVE,
+                activeforeground=self._TEXT,
+                highlightthickness=0,
+                bd=0,
+                font=("Courier New", 8),
+            )
+            menu["menu"].configure(
+                bg=self._PANEL,
+                fg=self._TEXT,
+                activebackground=self._PANEL_ACTIVE,
+            )
+            menu.pack(side="right", padx=(4, 0))
+        self._hold_shortcut_status = tk.Label(
+            parent,
+            text=self._hold_shortcut_summary(),
+            bg=self._BACKGROUND,
+            fg=self._MUTED,
+            justify="left",
+            wraplength=540,
+            font=("Trebuchet MS", 8),
+        )
+        self._hold_shortcut_status.pack(anchor="w")
+
+    def _hold_shortcut_summary(self) -> str:
+        return (
+            f"Hold {hold_hotkey_label(self._settings.snapshot().hold_hotkey)} to record; "
+            "release any held key to stop and transcribe."
+        )
+
+    def _apply_hold_shortcut(self) -> None:
+        modifiers = self._hold_modifier_options[self._hold_modifier_var.get()]
+        key = self._hold_key_options[self._hold_key_var.get()]
+        spec = "+".join((*modifiers, *((key,) if key else ())))
+        error = self._hold_hotkey_changer(spec)
+        if error:
+            self._hold_shortcut_status.configure(
+                text=error,
+                fg=theme_for(AppState.ERROR).accent,
+            )
+            return
+        self._hold_shortcut_status.configure(
+            text=self._hold_shortcut_summary(),
+            fg=self._MUTED,
+        )
         self._render_keycaps()
         self._on_settings_changed()
 

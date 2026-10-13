@@ -1,8 +1,9 @@
 # Wordwright
 
-Local, hands-free dictation for Windows. Press `Ctrl+Alt+Space`, speak, press
-it again, and the text is typed where your cursor is. Speech recognition runs
-entirely on your PC.
+Local dictation for Windows. Hold `Ctrl+Alt` while you speak and release to
+transcribe, or press `Ctrl+Shift+Space` once to start and again to stop. The
+text is typed where your cursor is, and speech recognition runs entirely on
+your PC.
 
 <!-- TODO: add docs/media/demo.gif here: one 10-second dictation into a text box. -->
 
@@ -22,7 +23,8 @@ entirely on your PC.
    Windows shows an "Unknown publisher" warning.
 2. Wait for **Ready to write**. The first launch downloads the speech model and
    needs an internet connection; after that it works offline.
-3. Click into any text box, press `Ctrl+Alt+Space`, speak, then press it again.
+3. Click into any text box, hold `Ctrl+Alt` while you speak, then release.
+   For hands-free dictation, press `Ctrl+Shift+Space`, speak, then press it again.
 
 Press `Esc` while recording to cancel without typing anything.
 
@@ -30,8 +32,9 @@ Press `Esc` while recording to cancel without typing anything.
 
 | You want to | Do this |
 | --- | --- |
-| Start or stop dictation | `Ctrl+Alt+Space`, or select the scroll and choose **Start recording** |
-| Change the shortcut | **Settings** page → **Shortcut** → pick keys → **Apply** |
+| Hold to dictate | Hold `Ctrl+Alt`, speak, then release to transcribe |
+| Toggle hands-free dictation | Press `Ctrl+Shift+Space` once to start and again to stop |
+| Change either shortcut | **Settings** page → **Shortcuts** → pick keys → **Apply** |
 | Cancel a recording | `Esc` (Wordwright only listens for Esc while recording) |
 | Teach it your words | **Speech** page → one word or phrase per line → **Save words** |
 | Change the speech model | **Speech** page → **Model** (Automatic is the default) |

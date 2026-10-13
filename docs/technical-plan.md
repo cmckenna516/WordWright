@@ -73,9 +73,10 @@ If `faster-whisper` becomes difficult to package reliably on Windows, evaluate `
 
 ### 3. Hotkey-controlled workflow
 
-- Register `Ctrl+Alt+Space` globally.
-- First press starts recording.
-- Second press stops recording.
+- Register `Ctrl+Shift+Space` globally for toggle dictation.
+- Track `Ctrl+Alt` press and release events for hold-to-dictate.
+- A toggle press starts or stops recording; a hold press starts and its release stops.
+- Allow both bindings to be configured independently and reject overlaps.
 - Prevent overlapping sessions.
 - Ensure the hotkey itself is not inserted into the target field.
 

@@ -53,11 +53,14 @@ The status interface must not steal focus from the destination text field. The s
 
 ### Hotkey
 
-- `Ctrl+Alt+Space` toggles recording.
+- Holding `Ctrl+Alt` starts recording and releasing either key stops recording
+  and starts transcription.
+- `Ctrl+Shift+Space` toggles recording.
 - The first press starts recording.
 - The second press stops recording and starts transcription.
+- Toggle and hold shortcuts are independently configurable.
+- Shortcuts that overlap the complete hold combination must be rejected.
 - Repeated or accidental input must not launch overlapping transcription jobs.
-- Hold-to-talk may be added later but is not configurable in version 0.1.
 
 ### Audio capture
 
@@ -101,7 +104,8 @@ The status interface must not steal focus from the destination text field. The s
 
 Version 0.1 is successful when all of the following are true:
 
-- The hotkey starts and stops microphone capture without the application being focused.
+- Both toggle and hold shortcuts control microphone capture without the application being focused.
+- Releasing the configured hold chord stops capture and starts transcription.
 - The user can speak hands-free between the two hotkey presses.
 - A visible state change occurs when recording starts and when transcription begins.
 - A normal English paragraph is returned with usable punctuation.

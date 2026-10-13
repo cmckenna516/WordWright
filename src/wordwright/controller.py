@@ -41,6 +41,7 @@ class AppController:
         self._state = AppState.LOADING
         self._state_lock = threading.RLock()
         self._last_hotkey_at = float("-inf")
+        self._hold_recording = False
         self._shutting_down = False
         # Serializes start, stop, and cancel, which can arrive from the hotkey
         # listener and the overlay's click handler at the same time.
@@ -75,8 +76,10 @@ class AppController:
         with self._transition_lock:
             state = self.state
             if state is AppState.IDLE:
+                self._hold_recording = False
                 self._begin_recording()
             elif state is AppState.RECORDING:
+                self._hold_recording = False
                 self._end_recording()
             elif state is AppState.LOADING:
                 self._status.notify("The local speech model is still loading.")
@@ -87,12 +90,36 @@ class AppController:
                     "The speech model is not loaded. Choose another model under Speech in the app."
                 )
 
+    def handle_hold_start(self) -> None:
+        """Start recording when the configured hold chord becomes active."""
+
+        with self._transition_lock:
+            state = self.state
+            if state is AppState.IDLE:
+                self._begin_recording()
+                self._hold_recording = self.state is AppState.RECORDING
+            elif state is AppState.LOADING:
+                self._status.notify("The local speech model is still loading.")
+            elif state is AppState.TRANSCRIBING:
+                self._status.notify("Transcription is already in progress.")
+
+    def handle_hold_stop(self) -> None:
+        """Stop only the recording that was started by the hold chord."""
+
+        with self._transition_lock:
+            if not self._hold_recording:
+                return
+            self._hold_recording = False
+            if self.state is AppState.RECORDING:
+                self._end_recording()
+
     def cancel_recording(self) -> None:
         """Discard the current recording without transcribing or typing it."""
 
         with self._transition_lock:
             if self.state is not AppState.RECORDING:
                 return
+            self._hold_recording = False
             try:
                 self._recorder.cancel()
             finally:
@@ -126,6 +153,7 @@ class AppController:
             if self._shutting_down:
                 return
             self._shutting_down = True
+            self._hold_recording = False
         try:
             self._recorder.cancel()
         finally:
