@@ -664,11 +664,11 @@ class PynputHotkeys:
 
 def create_hotkeys(
     toggle_spec: str,
-    hold_spec: str,
     on_toggle: Callable[[], None],
-    on_hold_start: Callable[[], None],
-    on_hold_stop: Callable[[], None],
     on_cancel: Callable[[], None],
+    hold_spec: str = DEFAULT_HOLD_HOTKEY,
+    on_hold_start: Callable[[], None] = lambda: None,
+    on_hold_stop: Callable[[], None] = lambda: None,
 ) -> WindowsHotkeys | PynputHotkeys:
     if os.name == "nt":
         return WindowsHotkeys(

@@ -96,7 +96,14 @@ def verify_clipboard() -> None:
 def verify_hotkey_hook() -> None:
     # Register and release an unlikely shortcut to prove the hotkey system
     # works. The user's own shortcut is checked when the app starts.
-    hotkeys = create_hotkeys("ctrl+alt+shift+f12", lambda: None, lambda: None)
+    hotkeys = create_hotkeys(
+        toggle_spec="ctrl+shift+f12",
+        hold_spec="ctrl+alt",
+        on_toggle=lambda: None,
+        on_hold_start=lambda: None,
+        on_hold_stop=lambda: None,
+        on_cancel=lambda: None,
+    )
     hotkeys.start()
     try:
         hotkeys.wait_until_ready()

@@ -9,6 +9,7 @@ from wordwright import hotkeys
 from wordwright.hotkeys import (
     HoldKeyListener,
     WindowsHotkeys,
+    create_hotkeys,
     hold_hotkey_label,
     hotkey_label,
     parse_hold_hotkey,
@@ -117,6 +118,10 @@ class ParseHotkeyTests(unittest.TestCase):
                 parse_hold_hotkey("ctrl+alt"),
             )
         )
+
+    def test_legacy_factory_call_uses_the_default_hold_shortcut(self) -> None:
+        listener = create_hotkeys("ctrl+shift+f12", lambda: None, lambda: None)
+        self.assertEqual(listener.hold_label, "Ctrl+Alt")
 
 
 class FakeHoldListener:
