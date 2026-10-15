@@ -185,6 +185,25 @@ class HoldKeyListenerTests(unittest.TestCase):
         keyboard.on_release("ctrl_l")
         self.assertEqual(events, ["start", "stop"])
 
+    def test_altgr_does_not_activate_ctrl_alt_hold(self) -> None:
+        _, keyboard, events = self.make()
+        # Windows commonly reports AltGr with a synthetic Ctrl press.
+        keyboard.on_press("ctrl_l")
+        keyboard.on_press("alt_gr")
+        self.assertEqual(events, [])
+
+    def test_releasing_one_of_two_ctrl_keys_keeps_hold_active(self) -> None:
+        _, keyboard, events = self.make()
+        keyboard.on_press("ctrl_l")
+        keyboard.on_press("ctrl_r")
+        keyboard.on_press("alt_l")
+        self.assertEqual(events, ["start"])
+
+        keyboard.on_release("ctrl_l")
+        self.assertEqual(events, ["start"])
+        keyboard.on_release("ctrl_r")
+        self.assertEqual(events, ["start", "stop"])
+
     def test_optional_main_key_must_also_be_held(self) -> None:
         _, keyboard, events = self.make("ctrl+alt+d")
         keyboard.on_press("ctrl")

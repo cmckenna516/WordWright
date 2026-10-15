@@ -220,7 +220,11 @@ class HoldKeyListener:
 
     _ALIASES = {
         "ctrl": "ctrl", "ctrl_l": "ctrl", "ctrl_r": "ctrl",
-        "alt": "alt", "alt_l": "alt", "alt_r": "alt", "alt_gr": "alt",
+        # AltGr is intentionally excluded. On Windows it is commonly reported
+        # together with a synthetic Ctrl press, so treating it as ordinary Alt
+        # would make the default Ctrl+Alt hold chord fire while typing symbols
+        # on many international keyboard layouts.
+        "alt": "alt", "alt_l": "alt", "alt_r": "alt",
         "shift": "shift", "shift_l": "shift", "shift_r": "shift",
         "cmd": "win", "cmd_l": "win", "cmd_r": "win", "win": "win",
         "space": "space",
@@ -243,7 +247,10 @@ class HoldKeyListener:
             user32 = ctypes.WinDLL("user32", use_last_error=True)
             self._key_state = lambda virtual_key: bool(user32.GetAsyncKeyState(virtual_key) & 0x8000)
         self._listener: Any | None = None
-        self._pressed: set[str] = set()
+        # Keep the physical key identities as well as their logical modifier.
+        # Otherwise releasing left Ctrl would clear "ctrl" while right Ctrl is
+        # still held, ending an active hold too early.
+        self._pressed: dict[str, set[str]] = {}
         self._active = False
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
@@ -260,7 +267,7 @@ class HoldKeyListener:
         return Listener(**callbacks)
 
     @classmethod
-    def _name(cls, key: Any) -> str | None:
+    def _key_identity(cls, key: Any) -> tuple[str, str] | None:
         if isinstance(key, str):
             raw = key
         else:
@@ -268,9 +275,9 @@ class HoldKeyListener:
             raw = char if char else getattr(key, "name", None) or str(key)
         raw = str(raw).lower().replace("key.", "").strip("<>'\"")
         if raw in cls._ALIASES:
-            return cls._ALIASES[raw]
+            return cls._ALIASES[raw], raw
         if raw in KEY_CHOICES:
-            return raw
+            return raw, raw
         return None
 
     def start(self) -> None:
@@ -312,27 +319,33 @@ class HoldKeyListener:
         return None
 
     def _matches(self) -> bool:
-        return self._hotkey.required_names <= self._pressed
+        return self._hotkey.required_names <= self._pressed.keys()
 
     def _handle_press(self, key: Any) -> None:
-        name = self._name(key)
-        if name is None:
+        identity = self._key_identity(key)
+        if identity is None:
             return
+        name, physical = identity
         callback: Callable[[], None] | None = None
         with self._lock:
-            self._pressed.add(name)
+            self._pressed.setdefault(name, set()).add(physical)
             if not self._active and self._matches():
                 self._active = True
                 callback = self._on_start
         self._invoke(callback)
 
     def _handle_release(self, key: Any) -> None:
-        name = self._name(key)
-        if name is None:
+        identity = self._key_identity(key)
+        if identity is None:
             return
+        name, physical = identity
         callback: Callable[[], None] | None = None
         with self._lock:
-            self._pressed.discard(name)
+            physical_keys = self._pressed.get(name)
+            if physical_keys is not None:
+                physical_keys.discard(physical)
+                if not physical_keys:
+                    self._pressed.pop(name, None)
             if self._active and not self._matches():
                 self._active = False
                 callback = self._on_stop

@@ -24,16 +24,15 @@ Reference development hardware:
 ## Primary workflow
 
 1. The user focuses a text field.
-2. The user presses `Ctrl+Alt+Space`.
+2. The user holds `Ctrl+Alt` (using the ordinary Alt key, not AltGr).
 3. Wordwright begins microphone capture and enters the **Recording** state.
-4. The user speaks hands-free and may navigate or scroll elsewhere.
-5. The user returns focus to the destination text field.
-6. The user presses `Ctrl+Alt+Space` again.
-7. Wordwright stops capture and enters the **Transcribing** state.
-8. The user leaves the destination field focused.
-9. Wordwright creates punctuated English text locally.
-10. Wordwright places the result on the clipboard and pastes it at the cursor.
-11. Wordwright returns to **Idle**.
+4. The user speaks while holding the shortcut.
+5. The user releases either shortcut key.
+6. Wordwright stops capture and enters the **Transcribing** state.
+7. The user leaves the destination field focused.
+8. Wordwright creates punctuated English text locally.
+9. Wordwright places the result on the clipboard and pastes it at the cursor.
+10. Wordwright returns to **Idle**.
 
 The destination is the text field focused when recording is stopped. Version 0.1 does not remember or restore a cursor position captured when recording began.
 
@@ -135,7 +134,6 @@ Accuracy and latency targets will be set after collecting representative recordi
 - Multiple languages
 - Installer-quality support for other computers
 - Settings UI
-- Hold-to-talk mode
 
 ## Product risks
 
