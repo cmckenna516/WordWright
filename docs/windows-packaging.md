@@ -35,6 +35,17 @@ Before wider public distribution, choose one of these signing paths:
 Signing and product naming are separate decisions. Changing the display name or
 publisher later does not require changing the local privacy architecture.
 
+Before public distribution, choose the long-term publisher identity and obtain
+a matching Windows code-signing certificate. The certificate—not merely the
+installer's Publisher text—is what replaces the `Unknown publisher` warning.
+
+## Release validation record
+
+Wordwright v0.3.0 was validated from the published installer on October 16,
+2026. The installed app launched normally with the full launcher, registered
+per-user sign-in startup, returned after sign-in with only the compact overlay,
+and completed press-and-hold recording, release, transcription, and text entry.
+
 ## Build
 
 Install Inno Setup 6, then run:
