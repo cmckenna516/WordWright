@@ -122,6 +122,8 @@ supported product.
 
 ### Later possibilities, not committed
 
+- Choose a long-term personal or company publisher identity and code-sign the
+  Windows installer before broader public distribution.
 - Microphone picker.
 - Additional languages.
 
