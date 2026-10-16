@@ -35,6 +35,11 @@ class RecordingOverlayTests(unittest.TestCase):
     def test_unknown_state_falls_back_to_ready(self) -> None:
         self.assertEqual(RecordingOverlay._display_for_state("Paste sent")[0], "READY")
 
+    def test_loading_stays_compact_when_launcher_is_hidden(self) -> None:
+        self.assertFalse(RecordingOverlay._is_expanded("Loading model", False, False))
+        self.assertTrue(RecordingOverlay._is_expanded("Loading model", False, True))
+        self.assertTrue(RecordingOverlay._is_expanded("Recording", False, False))
+
     def test_scroll_menu_requires_an_explicit_action(self) -> None:
         self.assertIsNone(RecordingOverlay._menu_action_at(228, 10))
         self.assertIsNone(RecordingOverlay._menu_action_at(160, 38))

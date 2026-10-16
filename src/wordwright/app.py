@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Callable
 
 from .audio import AudioRecorder
 from .config import AppConfig
@@ -46,13 +47,19 @@ def build_app(
     config: AppConfig,
     settings: SettingsStore | None = None,
     profile: HardwareProfile | None = None,
+    start_minimized: bool = False,
+    show_requested: Callable[[], bool] | None = None,
 ) -> tuple[AppController, TrayStatus]:
     settings = settings or SettingsStore()
     profile = profile or detect_hardware()
     plan = plan_from_config(config, settings.snapshot().model_choice, profile)
     LOGGER.info("Speech model: %s (%s)", plan.label, plan.reason)
 
-    status = TrayStatus(settings)
+    status = TrayStatus(
+        settings,
+        start_minimized=start_minimized,
+        show_requested=show_requested,
+    )
     recorder = AudioRecorder(
         sample_rate=config.sample_rate,
         device=config.microphone,

@@ -20,6 +20,7 @@ from .hotkeys import (
 from .settings import SettingsStore, parse_vocabulary
 from .sounds import SoundPlayer
 from .state import AppState
+from .startup import StartupRegistration
 from .theme import theme_for
 
 
@@ -49,10 +50,12 @@ class LauncherWindow:
         model_explainer: Callable[[], str] | None = None,
         hotkey_changer: Callable[[str], str | None] | None = None,
         hold_hotkey_changer: Callable[[str], str | None] | None = None,
+        startup_registration: StartupRegistration | None = None,
     ) -> None:
         self._root = root
         self._hotkey_changer = hotkey_changer or (lambda spec: None)
         self._hold_hotkey_changer = hold_hotkey_changer or (lambda spec: None)
+        self._startup_registration = startup_registration or StartupRegistration()
         self._settings = settings
         self._sounds = sounds
         self._on_toggle = on_toggle
@@ -445,11 +448,36 @@ class LauncherWindow:
         self._overlay_var = tk.BooleanVar(value=settings.show_overlay_always)
         self._sounds_var = tk.BooleanVar(value=settings.sounds_enabled)
         self._position_var = tk.StringVar(value=settings.overlay_position)
+        self._startup_var = tk.BooleanVar(value=self._startup_registration.is_enabled())
         body = tk.Frame(page, bg=self._BACKGROUND)
         body.pack(fill="both", expand=True, pady=(18, 0))
         self._section_label(body, "SHORTCUTS")
         self._shortcut_row(body)
         self._hold_shortcut_row(body)
+        self._section_label(body, "WINDOWS", top=17)
+        startup_available = self._startup_registration.available
+        self._check_row(
+            body,
+            "Start Wordwright when I sign in to Windows",
+            (
+                "Starts with only the compact scroll visible. Opening Wordwright yourself still opens the full window."
+                if startup_available
+                else "Available in the installed Windows app."
+            ),
+            self._startup_var,
+            self._save_startup,
+            enabled=startup_available,
+        )
+        self._startup_status = tk.Label(
+            body,
+            text="",
+            bg=self._BACKGROUND,
+            fg=self._MUTED,
+            justify="left",
+            wraplength=540,
+            font=("Trebuchet MS", 8),
+        )
+        self._startup_status.pack(anchor="w")
         self._section_label(body, "OVERLAY", top=17)
         self._check_row(
             body,
@@ -673,6 +701,7 @@ class LauncherWindow:
         note: str,
         variable: tk.BooleanVar,
         command: Callable[[], None],
+        enabled: bool = True,
     ) -> None:
         row = tk.Frame(parent, bg=self._BACKGROUND)
         row.pack(fill="x", pady=4)
@@ -699,6 +728,7 @@ class LauncherWindow:
             activeforeground=self._TEXT,
             bd=0,
             highlightthickness=0,
+            state="normal" if enabled else "disabled",
         ).pack(side="right", padx=(12, 0))
 
     def _option_row(
@@ -778,6 +808,26 @@ class LauncherWindow:
     def _save_overlay_visibility(self) -> None:
         self._settings.update(show_overlay_always=self._overlay_var.get())
         self._on_settings_changed()
+
+    def _save_startup(self) -> None:
+        enabled = self._startup_var.get()
+        try:
+            self._startup_registration.set_enabled(enabled)
+        except (OSError, RuntimeError):
+            self._startup_var.set(self._startup_registration.is_enabled())
+            self._startup_status.configure(
+                text="Windows could not update this startup setting. Try again or check your account permissions.",
+                fg=theme_for(AppState.ERROR).accent,
+            )
+            return
+        self._startup_status.configure(
+            text=(
+                "Wordwright will start in compact mode the next time you sign in."
+                if enabled
+                else "Wordwright will no longer start automatically."
+            ),
+            fg=self._MUTED,
+        )
 
     def _save_overlay_position(self) -> None:
         self._settings.update(overlay_position=self._position_var.get())
