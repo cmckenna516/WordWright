@@ -73,6 +73,8 @@ the always-visible idle state.
 ## Launcher behavior
 
 - Starting the packaged application opens a single launcher window.
+- Optional Windows sign-in startup opens only the compact scroll; it is off by
+  default and configured separately for each Windows account.
 - Starting it again should focus the existing process rather than creating a
   second recorder or hotkey listener.
 - Closing the launcher window hides it while dictation continues.
@@ -112,6 +114,7 @@ supported product.
 - Shortcut registered with Windows so it fires only on the exact combination,
   and can be changed in Settings.
 - An idle overlay that redraws only when something changes.
+- Optional per-user launch at Windows sign-in, with a compact startup mode.
 
 ### Next
 
@@ -120,7 +123,6 @@ supported product.
 ### Later possibilities, not committed
 
 - Microphone picker.
-- Launch at Windows sign-in.
 - Additional languages.
 
 ## Sound direction

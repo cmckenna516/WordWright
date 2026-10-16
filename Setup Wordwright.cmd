@@ -1,5 +1,11 @@
 @echo off
 setlocal
+
+if /i "%~1"=="--keep-open" goto begin_setup
+start "Wordwright Setup" "%ComSpec%" /k call "%~f0" --keep-open
+exit /b 0
+
+:begin_setup
 title Wordwright Setup
 set "SETUP_SCRIPT=%~dp0scripts\setup.ps1"
 set "SETUP_MARKER=%~dp0.setup-complete"

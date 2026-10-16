@@ -26,6 +26,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model-dir", type=Path, default=None)
     parser.add_argument("--list-microphones", action="store_true")
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument(
+        "--startup",
+        action="store_true",
+        help="Start with only the compact overlay visible (used at Windows sign-in)",
+    )
     return parser.parse_args(argv)
 
 
@@ -64,7 +69,8 @@ def main(argv: list[str] | None = None) -> int:
 
     instance = SingleInstance.acquire()
     if instance is None:
-        show_already_running_message()
+        if not args.startup and not SingleInstance.request_show():
+            show_already_running_message()
         return 0
 
     config_options = {
@@ -80,7 +86,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     try:
-        controller, status = build_app(config)
+        controller, status = build_app(
+            config,
+            start_minimized=args.startup,
+            show_requested=instance.consume_show_request,
+        )
         try:
             controller.start()
             status.run()

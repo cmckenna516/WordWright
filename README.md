@@ -18,8 +18,9 @@ your PC.
 
 ## Quickstart
 
-1. Download the latest `Wordwright-Setup-x.y.z.exe` from
-   [Releases](../../releases) and run it. The installer isn't code-signed, so
+1. Download `Wordwright-Setup-x.y.z.exe` from the
+   [latest Wordwright release](../../releases/latest) and run it. Do not use
+   GitHub's **Source code** ZIP files; those are for development. The installer isn't code-signed, so
    Windows shows an "Unknown publisher" warning.
 2. Wait for **Ready to write**. The first launch downloads the speech model and
    needs an internet connection; after that it works offline.
@@ -35,6 +36,7 @@ Press `Esc` while recording to cancel without typing anything.
 | Hold to dictate | Hold `Ctrl+Alt`, speak, then release to transcribe |
 | Toggle hands-free dictation | Press `Ctrl+Shift+Space` once to start and again to stop |
 | Change either shortcut | **Settings** page → **Shortcuts** → pick keys → **Apply** |
+| Start Wordwright with Windows | **Settings** page → **Windows** → enable **Start Wordwright when I sign in** |
 | Cancel a recording | `Esc` (Wordwright only listens for Esc while recording) |
 | Teach it your words | **Speech** page → one word or phrase per line → **Save words** |
 | Change the speech model | **Speech** page → **Model** (Automatic is the default) |
@@ -44,6 +46,10 @@ Press `Esc` while recording to cancel without typing anything.
 If no text field has focus when transcription finishes, the text is copied to
 the clipboard instead so the dictation isn't lost. Wordwright never presses
 Enter, so it can't submit a form or send a message for you.
+
+When sign-in startup is enabled, the installed app launches with only the
+compact scroll visible. Opening Wordwright from its shortcut still opens the
+full window, even when it is already running.
 
 ### Speech models
 

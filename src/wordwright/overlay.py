@@ -13,6 +13,7 @@ from .hotkeys import hold_hotkey_label, hotkey_label
 from .settings import SettingsStore
 from .sounds import SoundPlayer
 from .state import AppState
+from .startup import StartupRegistration
 from .theme import theme_for
 
 
@@ -57,6 +58,9 @@ class RecordingOverlay:
         model_explainer: Callable[[], str] | None = None,
         hotkey_changer: Callable[[str], str | None] | None = None,
         hold_hotkey_changer: Callable[[str], str | None] | None = None,
+        startup_registration: StartupRegistration | None = None,
+        start_minimized: bool = False,
+        show_requested: Callable[[], bool] | None = None,
         canvas_width: int = _WIDTH,
         canvas_height: int = _HEIGHT,
     ) -> None:
@@ -69,6 +73,9 @@ class RecordingOverlay:
         self._model_explainer = model_explainer or (lambda: "")
         self._hotkey_changer = hotkey_changer or (lambda spec: None)
         self._hold_hotkey_changer = hold_hotkey_changer or (lambda spec: None)
+        self._startup_registration = startup_registration or StartupRegistration()
+        self._start_minimized = start_minimized
+        self._show_requested = show_requested or (lambda: False)
         self._canvas_width = canvas_width
         self._canvas_height = canvas_height
         self._updates: queue.Queue[tuple[str, Any]] = queue.Queue()
@@ -111,6 +118,8 @@ class RecordingOverlay:
         from .launcher import LauncherWindow
 
         root = tk.Tk()
+        if self._start_minimized:
+            root.withdraw()
         launcher = LauncherWindow(
             root=root,
             settings=self._settings,
@@ -122,6 +131,7 @@ class RecordingOverlay:
             model_explainer=lambda: self._model_explainer(),
             hotkey_changer=lambda spec: self._hotkey_changer(spec),
             hold_hotkey_changer=lambda spec: self._hold_hotkey_changer(spec),
+            startup_registration=self._startup_registration,
         )
 
         window = tk.Toplevel(root)
@@ -162,7 +172,7 @@ class RecordingOverlay:
             return launcher.is_visible()
 
         def expanded() -> bool:
-            return state != AppState.IDLE.value or menu_open or launcher_visible()
+            return self._is_expanded(state, menu_open, launcher_visible())
 
         def animating() -> bool:
             return state in self._ANIMATED_STATES
@@ -391,6 +401,9 @@ class RecordingOverlay:
         def tick() -> None:
             nonlocal state, stopped, menu_open, menu_expires_at, animation_frame
             settings_were_changed = False
+            if self._show_requested():
+                menu_open = False
+                launcher.show()
             while True:
                 try:
                     action, payload = self._updates.get_nowait()
@@ -440,6 +453,14 @@ class RecordingOverlay:
         root.mainloop()
         if mouse_listener is not None:
             mouse_listener.stop()
+
+    @staticmethod
+    def _is_expanded(state: str, menu_open: bool, launcher_visible: bool) -> bool:
+        return (
+            state not in {AppState.IDLE.value, AppState.LOADING.value}
+            or menu_open
+            or launcher_visible
+        )
 
     @staticmethod
     def _display_for_state(state: str) -> tuple[str, str, str, str]:

@@ -11,6 +11,7 @@ from .overlay import RecordingOverlay
 from .settings import SettingsStore
 from .sounds import SoundPlayer
 from .state import AppState
+from .startup import StartupRegistration
 from .theme import theme_for
 
 __all__ = ["AppState", "TrayStatus", "make_status_icon"]
@@ -63,7 +64,13 @@ def make_status_icon(
 class TrayStatus:
     """System-tray status display that does not take typing focus."""
 
-    def __init__(self, settings: SettingsStore | None = None) -> None:
+    def __init__(
+        self,
+        settings: SettingsStore | None = None,
+        *,
+        start_minimized: bool = False,
+        show_requested: Callable[[], bool] | None = None,
+    ) -> None:
         import pystray
 
         self._pystray = pystray
@@ -90,6 +97,9 @@ class TrayStatus:
                 model_explainer=lambda: self._model_explainer(),
                 hotkey_changer=lambda spec: self._hotkey_changer(spec),
                 hold_hotkey_changer=lambda spec: self._hold_hotkey_changer(spec),
+                startup_registration=StartupRegistration(),
+                start_minimized=start_minimized,
+                show_requested=show_requested,
             )
             if self._logo is not None
             else None
