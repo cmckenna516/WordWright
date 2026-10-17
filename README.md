@@ -15,6 +15,8 @@ your PC.
   accurate one on PCs with an NVIDIA GPU, a lighter one on laptops and ARM PCs.
 - **Stays out of the way.** A small scroll at the top of the screen shows when
   it's listening; it never takes focus from the app you're typing in.
+- **Uses the microphone you choose.** Keep following the Windows default, or
+  give Wordwright its own preferred headset, AirPods, or other input device.
 
 ## Quickstart
 
@@ -36,6 +38,7 @@ Press `Esc` while recording to cancel without typing anything.
 | Hold to dictate | Hold `Ctrl+Alt`, speak, then release to transcribe |
 | Toggle hands-free dictation | Press `Ctrl+Shift+Space` once to start and again to stop |
 | Change either shortcut | **Settings** page → **Shortcuts** → pick keys → **Apply** |
+| Choose a microphone | **Settings** page → **Audio input** → choose Windows default or a specific device |
 | Start Wordwright with Windows | **Settings** page → **Windows** → enable **Start Wordwright when I sign in** |
 | Cancel a recording | `Esc` (Wordwright only listens for Esc while recording) |
 | Teach it your words | **Speech** page → one word or phrase per line → **Save words** |
@@ -50,6 +53,11 @@ Enter, so it can't submit a form or send a message for you.
 When sign-in startup is enabled, the installed app launches with only the
 compact scroll visible. Opening Wordwright from its shortcut still opens the
 full window, even when it is already running.
+
+Wordwright remembers a specifically selected microphone independently from the
+Windows default. If that device is disconnected, Wordwright reports that it is
+unavailable instead of silently listening through a different microphone. Use
+**Refresh** on the Settings page after connecting a new wired or Bluetooth input.
 
 ### Speech models
 

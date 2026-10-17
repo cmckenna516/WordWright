@@ -54,6 +54,7 @@ class UserSettings:
     hold_hotkey: str = DEFAULT_HOLD_HOTKEY
     model_choice: str = AUTO
     vocabulary: tuple[str, ...] = ()
+    microphone_device: str | None = None
 
 
 class SettingsStore:
@@ -147,6 +148,11 @@ class SettingsStore:
             raise ValueError(conflict)
         if settings.model_choice not in MODEL_CHOICES:
             raise ValueError(f"Unsupported speech model: {settings.model_choice}")
+        if settings.microphone_device is not None and (
+            not isinstance(settings.microphone_device, str)
+            or not settings.microphone_device.strip()
+        ):
+            raise ValueError("The microphone device must be a non-empty name or null.")
         if len(settings.vocabulary) > MAX_VOCABULARY_TERMS:
             raise ValueError(f"Vocabulary is limited to {MAX_VOCABULARY_TERMS} terms.")
         for term in settings.vocabulary:

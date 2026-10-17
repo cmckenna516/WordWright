@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 import numpy as np
 
+from .audio import MicrophoneUnavailableError
 from .config import AppConfig
 from .output import DeliveryResult
 from .state import AppState
@@ -225,7 +226,12 @@ class AppController:
             self._recorder.start()
         except Exception as exc:
             LOGGER.exception("Unable to start microphone capture")
-            self._fail("The microphone could not be opened.", exc)
+            message = (
+                str(exc)
+                if isinstance(exc, MicrophoneUnavailableError)
+                else "The microphone could not be opened."
+            )
+            self._fail(message, exc)
             return
         self._set_state(AppState.RECORDING)
 

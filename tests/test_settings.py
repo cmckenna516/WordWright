@@ -18,6 +18,7 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(settings.model_choice, "auto")
         self.assertEqual(settings.hotkey, "ctrl+shift+space")
         self.assertEqual(settings.hold_hotkey, "ctrl+alt")
+        self.assertIsNone(settings.microphone_device)
 
     def test_updates_are_persisted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -27,6 +28,7 @@ class SettingsStoreTests(unittest.TestCase):
                 overlay_position="bottom_center",
                 model_choice="base.en",
                 vocabulary=["Trace3", "Glean"],
+                microphone_device="WASAPI::Headset Microphone",
             )
             settings = SettingsStore(path).snapshot()
 
@@ -34,6 +36,13 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(settings.overlay_position, "bottom_center")
         self.assertEqual(settings.model_choice, "base.en")
         self.assertEqual(settings.vocabulary, ("Trace3", "Glean"))
+        self.assertEqual(settings.microphone_device, "WASAPI::Headset Microphone")
+
+    def test_rejects_blank_microphone_name(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = SettingsStore(Path(directory) / "settings.json")
+            with self.assertRaises(ValueError):
+                store.update(microphone_device="  ")
 
     def test_shortcut_is_validated_and_persisted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

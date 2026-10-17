@@ -57,7 +57,7 @@ Install Inno Setup 6, then run:
 Outputs:
 
 - `dist\Wordwright\Wordwright.exe`: unpacked application build
-- `release\Wordwright-Setup-0.3.0.exe`: installer for testers
+- `release\Wordwright-Setup-0.4.0.exe`: installer for testers
 
 The installer is per-user and does not require elevation. The speech model,
 settings, and diagnostic logs remain under `%LOCALAPPDATA%\Wordwright`, so an
@@ -92,11 +92,11 @@ version tag is pushed. Before tagging, update the matching version in
 merge the tested change into `main`.
 
 ```powershell
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
-The workflow runs the unit tests, builds `Wordwright-Setup-0.3.0.exe`, creates
+The workflow runs the unit tests, builds `Wordwright-Setup-0.4.0.exe`, creates
 its SHA-256 checksum, and attaches both files to a GitHub Release. Testers
 should download the `.exe` from the latest Release and should not download
 GitHub's automatically generated source-code archives.
@@ -152,7 +152,7 @@ The first build creates `.packaging-venv`, downloads the project dependencies,
 and can take several minutes. A successful build produces:
 
 ```text
-release\Wordwright-Setup-0.3.0.exe
+release\Wordwright-Setup-0.4.0.exe
 ```
 
 ### 4. Install and verify the default
@@ -160,7 +160,7 @@ release\Wordwright-Setup-0.3.0.exe
 1. Quit any running Wordwright instance from its tray menu.
 2. Uninstall an older Wordwright build from **Settings → Apps → Installed
    apps** if one is present.
-3. Run `release\Wordwright-Setup-0.3.0.exe`. The unsigned test build may show
+3. Run `release\Wordwright-Setup-0.4.0.exe`. The unsigned test build may show
    the documented Unknown publisher warning.
 4. Let the installer launch Wordwright.
 5. Open **Settings → Windows**.

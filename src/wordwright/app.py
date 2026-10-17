@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
-from .audio import AudioRecorder
+from .audio import AudioRecorder, resolve_microphone
 from .config import AppConfig
 from .controller import AppController
 from .hardware import HardwareProfile, ModelPlan, detect_hardware, resolve
@@ -63,6 +63,11 @@ def build_app(
     recorder = AudioRecorder(
         sample_rate=config.sample_rate,
         device=config.microphone,
+        device_provider=(
+            None
+            if config.microphone is not None
+            else lambda: resolve_microphone(settings.snapshot().microphone_device)
+        ),
     )
     transcriber = LocalTranscriber(
         model_name=plan.model,

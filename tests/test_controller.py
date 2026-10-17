@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import numpy as np
 
+from wordwright.audio import MicrophoneUnavailableError
 from wordwright.config import AppConfig
 from wordwright.controller import AppController
 from wordwright.output import DeliveryResult
@@ -97,6 +98,34 @@ class ImmediateRunner:
 
 
 class AppControllerTests(unittest.TestCase):
+    def test_missing_preferred_microphone_is_explained_to_the_user(self) -> None:
+        status = FakeStatus()
+        recorder = FakeRecorder()
+
+        def unavailable() -> None:
+            raise MicrophoneUnavailableError(
+                'The selected microphone "AirPods" is not available. '
+                "Connect it or choose another microphone in Settings."
+            )
+
+        recorder.start = unavailable
+        controller = AppController(
+            config=AppConfig(),
+            recorder=recorder,
+            transcriber=FakeTranscriber(),
+            inserter=FakeInserter(),
+            status=status,
+            hotkey=FakeHotkey(),
+            async_runner=ImmediateRunner(),
+        )
+
+        controller.start()
+        controller.handle_hotkey()
+
+        self.assertEqual(controller.state, AppState.ERROR)
+        self.assertIn("AirPods", status.messages[-1])
+        self.assertIn("Settings", status.messages[-1])
+
     def test_full_toggle_flow(self) -> None:
         clock_values = iter([1.0, 2.0])
         status = FakeStatus()

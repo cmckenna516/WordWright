@@ -8,6 +8,7 @@ from tkinter import filedialog
 from typing import Callable
 
 from . import __version__
+from .audio import microphone_devices
 from .hardware import MODEL_LABELS
 from .hotkeys import (
     KEY_CHOICES,
@@ -66,6 +67,7 @@ class LauncherWindow:
         self._state = AppState.LOADING.value
         self._pages: dict[str, tk.Frame] = {}
         self._nav_buttons: dict[str, tk.Button] = {}
+        self._active_page = ""
         self._configure_root()
         self._build_shell()
         self.show_page("dictate")
@@ -442,15 +444,41 @@ class LauncherWindow:
         self._on_model_changed()
 
     def _build_settings(self, parent: tk.Widget) -> tk.Frame:
-        page = tk.Frame(parent, bg=self._BACKGROUND, padx=42, pady=24)
-        self._heading(page, "Preferences", "Settings", "Keep the utility quiet, local, and easy to understand.")
+        page = tk.Frame(parent, bg=self._BACKGROUND)
+        canvas = tk.Canvas(
+            page,
+            bg=self._BACKGROUND,
+            highlightthickness=0,
+            borderwidth=0,
+        )
+        scrollbar = tk.Scrollbar(page, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        scroller = tk.Frame(canvas, bg=self._BACKGROUND, padx=42, pady=24)
+        scroller_id = canvas.create_window((0, 0), window=scroller, anchor="nw")
+        scroller.bind(
+            "<Configure>",
+            lambda _event: canvas.configure(scrollregion=canvas.bbox("all")),
+        )
+        canvas.bind(
+            "<Configure>",
+            lambda event: canvas.itemconfigure(scroller_id, width=event.width),
+        )
+        self._settings_canvas = canvas
+        self._root.bind_all("<MouseWheel>", self._scroll_settings, add="+")
+
+        self._heading(scroller, "Preferences", "Settings", "Keep the utility quiet, local, and easy to understand.")
         settings = self._settings.snapshot()
         self._overlay_var = tk.BooleanVar(value=settings.show_overlay_always)
         self._sounds_var = tk.BooleanVar(value=settings.sounds_enabled)
         self._position_var = tk.StringVar(value=settings.overlay_position)
         self._startup_var = tk.BooleanVar(value=self._startup_registration.is_enabled())
-        body = tk.Frame(page, bg=self._BACKGROUND)
+        body = tk.Frame(scroller, bg=self._BACKGROUND)
         body.pack(fill="both", expand=True, pady=(18, 0))
+        self._section_label(body, "AUDIO INPUT")
+        self._microphone_row(body)
         self._section_label(body, "SHORTCUTS")
         self._shortcut_row(body)
         self._hold_shortcut_row(body)
@@ -509,6 +537,141 @@ class LauncherWindow:
         self._sound_row(body, "Start sound", "start_sound_path")
         self._sound_row(body, "Stop sound", "stop_sound_path")
         return page
+
+    def _scroll_settings(self, event: tk.Event) -> None:
+        if self._active_page != "settings":
+            return
+        try:
+            x, y = self._root.winfo_pointerxy()
+            widget = self._root.winfo_containing(x, y)
+        except tk.TclError:
+            return
+        while widget is not None and widget is not self._settings_canvas:
+            widget = getattr(widget, "master", None)
+        if widget is self._settings_canvas and event.delta:
+            self._settings_canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
+
+    def _microphone_row(self, parent: tk.Widget) -> None:
+        row = tk.Frame(parent, bg=self._BACKGROUND)
+        row.pack(fill="x", pady=(4, 2))
+        tk.Label(
+            row,
+            text="Microphone",
+            bg=self._BACKGROUND,
+            fg=self._TEXT,
+            font=("Trebuchet MS", 9),
+        ).pack(side="left")
+        tk.Button(
+            row,
+            text="Refresh",
+            command=self._refresh_microphones,
+            bg=self._PANEL,
+            fg=self._TEXT,
+            activebackground=self._PANEL_ACTIVE,
+            activeforeground=self._TEXT,
+            bd=0,
+            padx=9,
+            pady=5,
+            font=("Courier New", 8),
+        ).pack(side="right", padx=(6, 0))
+        self._microphone_display = tk.StringVar(value="Windows default")
+        self._microphone_menu = tk.OptionMenu(
+            row,
+            self._microphone_display,
+            "Windows default",
+            command=self._choose_microphone,
+        )
+        self._microphone_menu.configure(
+            width=35,
+            anchor="e",
+            bg=self._PANEL,
+            fg=self._TEXT,
+            activebackground=self._PANEL_ACTIVE,
+            activeforeground=self._TEXT,
+            highlightthickness=0,
+            bd=0,
+            font=("Courier New", 8),
+        )
+        self._microphone_menu["menu"].configure(
+            bg=self._PANEL,
+            fg=self._TEXT,
+            activebackground=self._PANEL_ACTIVE,
+        )
+        self._microphone_menu.pack(side="right")
+        self._microphone_status = tk.Label(
+            parent,
+            text="",
+            bg=self._BACKGROUND,
+            fg=self._MUTED,
+            justify="left",
+            wraplength=540,
+            font=("Trebuchet MS", 8),
+        )
+        self._microphone_status.pack(anchor="w", pady=(0, 8))
+        self._refresh_microphones()
+
+    def _refresh_microphones(self) -> None:
+        selected = self._settings.snapshot().microphone_device
+        display = "Windows default"
+        try:
+            devices = microphone_devices()
+        except Exception as exc:
+            self._microphone_choices = {"Windows default": None}
+            if selected is not None:
+                display = f"Unavailable: {selected}"
+                self._microphone_choices[display] = selected
+            self._microphone_status.configure(
+                text=f"Wordwright could not read the available microphones: {exc}",
+                fg=theme_for(AppState.ERROR).accent,
+            )
+        else:
+            self._microphone_choices = {
+                "Windows default": None,
+                **{device.label: device.identifier for device in devices},
+            }
+            if selected is None:
+                note = "Follows the Windows default input device, including future Windows changes."
+                display = "Windows default"
+            elif selected in self._microphone_choices.values():
+                note = "Wordwright will use this microphone even when the Windows default is different."
+                display = next(
+                    label for label, identifier in self._microphone_choices.items()
+                    if identifier == selected
+                )
+            else:
+                note = (
+                    "This preferred microphone is not connected. Connect it and select Refresh, "
+                    "or choose another input."
+                )
+                display = f"Unavailable: {selected}"
+                self._microphone_choices[display] = selected
+            self._microphone_status.configure(text=note, fg=self._MUTED)
+
+        menu = self._microphone_menu["menu"]
+        menu.delete(0, "end")
+        for label in self._microphone_choices:
+            menu.add_command(
+                label=label,
+                command=lambda value=label: self._select_microphone_label(value),
+            )
+        self._microphone_display.set(display)
+
+    def _select_microphone_label(self, label: str) -> None:
+        self._microphone_display.set(label)
+        self._choose_microphone(label)
+
+    def _choose_microphone(self, label: str) -> None:
+        identifier = self._microphone_choices[label]
+        self._settings.update(microphone_device=identifier)
+        self._microphone_status.configure(
+            text=(
+                "Follows the Windows default input device, including future Windows changes."
+                if identifier is None
+                else "Wordwright will use this microphone even when the Windows default is different."
+            ),
+            fg=self._MUTED,
+        )
+        self._on_settings_changed()
 
     @staticmethod
     def _key_display(key: str) -> str:
@@ -838,6 +1001,7 @@ class LauncherWindow:
         self._on_settings_changed()
 
     def show_page(self, name: str) -> None:
+        self._active_page = name
         self._pages[name].tkraise()
         for key, button in self._nav_buttons.items():
             active = key == name

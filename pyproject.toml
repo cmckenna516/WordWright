@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wordwright"
-version = "0.3.0"
+version = "0.4.0"
 description = "Local, hands-free dictation for Windows"
 readme = "README.md"
 license = "MIT"

@@ -129,16 +129,27 @@ class LocalTranscriber:
         if self._download_root is None:
             return None
         repository = _repository_id(self._model_name).replace("/", "--")
-        snapshots = self._download_root / f"models--{repository}" / "snapshots"
-        if not snapshots.is_dir():
-            return None
-        for snapshot in sorted(snapshots.iterdir(), reverse=True):
-            if (
-                snapshot.is_dir()
-                and all((snapshot / name).is_file() for name in _REQUIRED_MODEL_FILES)
-                and any(snapshot.glob("vocabulary.*"))
-            ):
-                return snapshot
+        repositories = [self._download_root / f"models--{repository}"]
+        if "/" not in self._model_name:
+            # faster-whisper has moved some aliases between Hugging Face
+            # organizations. Reuse an already complete snapshot regardless of
+            # which organization supplied it instead of downloading it again.
+            pattern = f"models--*--faster-whisper-{self._model_name}"
+            repositories.extend(
+                path for path in sorted(self._download_root.glob(pattern))
+                if path not in repositories
+            )
+        for cached_repository in repositories:
+            snapshots = cached_repository / "snapshots"
+            if not snapshots.is_dir():
+                continue
+            for snapshot in sorted(snapshots.iterdir(), reverse=True):
+                if (
+                    snapshot.is_dir()
+                    and all((snapshot / name).is_file() for name in _REQUIRED_MODEL_FILES)
+                    and any(snapshot.glob("vocabulary.*"))
+                ):
+                    return snapshot
         return None
 
     def hotwords(self) -> str | None:
